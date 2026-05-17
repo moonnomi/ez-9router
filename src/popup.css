@@ -11,12 +11,14 @@
   --line-strong: rgba(255, 111, 34, .42);
   --accent: #ff4b25;
   --accent-2: #ff9a2f;
+  --accent-rgb: 255, 75, 37;
+  --accent-2-rgb: 255, 154, 47;
   --ok: #27d85f;
   --warn: #ffae22;
-  --shadow: 0 24px 70px rgba(0, 0, 0, .42), 0 0 42px rgba(255, 73, 32, .08);
+  --shadow: 0 24px 70px rgba(0, 0, 0, .42), 0 0 42px rgba(var(--accent-rgb), .08);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at 18% 0, rgba(255, 83, 28, .13), transparent 30%), var(--bg);
+  background: radial-gradient(circle at 18% 0, rgba(var(--accent-rgb), .13), transparent 30%), var(--bg);
 }
 
 :root[data-theme="light"] {
@@ -30,13 +32,17 @@
   --muted: #76675f;
   --line: rgba(130, 58, 34, .17);
   --line-strong: rgba(255, 91, 36, .42);
-  --shadow: 0 20px 50px rgba(101, 42, 17, .15), 0 0 34px rgba(255, 85, 31, .08);
+  --shadow: 0 20px 50px rgba(101, 42, 17, .15), 0 0 34px rgba(var(--accent-rgb), .08);
 }
 
 :root.stealth-mode {
   --accent: #7a5cff;
   --accent-2: #22b7ff;
+  --accent-rgb: 122, 92, 255;
+  --accent-2-rgb: 34, 183, 255;
   --line-strong: rgba(101, 128, 255, .48);
+  --line: rgba(101, 128, 255, .18);
+  --shadow: 0 24px 70px rgba(0, 0, 0, .42), 0 0 42px rgba(var(--accent-rgb), .14);
   --panel-soft: rgba(101, 128, 255, .1);
   background: radial-gradient(circle at 18% 0, rgba(82, 93, 255, .17), transparent 30%), var(--bg);
 }
@@ -106,7 +112,7 @@ body {
   color: #17110d;
   font-size: 29px;
   font-weight: 950;
-  box-shadow: 0 12px 32px rgba(255, 82, 30, .32);
+  box-shadow: 0 12px 32px rgba(var(--accent-rgb), .32);
 }
 
 h1 {
@@ -248,7 +254,7 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--line-strong);
-  box-shadow: 0 0 0 3px rgba(255, 88, 33, .12);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .12);
 }
 
 .wide-btn,
@@ -258,7 +264,7 @@ textarea:focus {
   border-radius: 14px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
-  box-shadow: 0 14px 34px rgba(255, 74, 30, .28);
+  box-shadow: 0 14px 34px rgba(var(--accent-rgb), .28);
 }
 
 .wide-btn:hover,
@@ -314,9 +320,9 @@ textarea:focus {
 
 .segmented button.active {
   outline: 1px solid var(--line-strong);
-  background: rgba(255, 93, 32, .12);
+  background: rgba(var(--accent-rgb), .12);
   color: var(--text);
-  box-shadow: 0 0 18px rgba(255, 90, 32, .12);
+  box-shadow: 0 0 18px rgba(var(--accent-rgb), .12);
 }
 
 .prompt-list,
@@ -345,7 +351,7 @@ textarea:focus {
   height: 30px;
   border-radius: 12px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 8px 22px rgba(255, 80, 28, .25);
+  box-shadow: 0 8px 22px rgba(var(--accent-rgb), .25);
 }
 
 .prompt-top {
@@ -416,13 +422,13 @@ textarea:focus {
 }
 
 .switch input:checked + span {
-  background: rgba(255, 86, 32, .22);
+  background: rgba(var(--accent-rgb), .22);
 }
 
 .switch input:checked + span::after {
   transform: translateX(19px);
   background: var(--accent);
-  box-shadow: 0 0 14px rgba(255, 82, 30, .7);
+  box-shadow: 0 0 14px rgba(var(--accent-rgb), .7);
 }
 
 .debug-actions {
