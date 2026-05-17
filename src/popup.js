@@ -19,6 +19,7 @@ const debugEnabled = document.querySelector("#debugEnabled");
 const debugList = document.querySelector("#debugList");
 const copyLogs = document.querySelector("#copyLogs");
 const clearLogs = document.querySelector("#clearLogs");
+const testModel = document.querySelector("#testModel");
 
 init();
 
@@ -48,6 +49,14 @@ clearLogs.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "clearDebugLogs" });
   await loadDebugLogs();
   setStatus("Debug logs cleared");
+});
+
+testModel.addEventListener("click", async () => {
+  setStatus("Testing model...");
+  await save();
+  const result = await chrome.runtime.sendMessage({ type: "testModel", model: model.value.trim() });
+  await loadDebugLogs();
+  setStatus(result?.ok ? `Model OK: ${result.message}` : `Model failed: ${result.hint || result.message}`);
 });
 
 addPrompt.addEventListener("click", async () => {

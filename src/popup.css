@@ -198,6 +198,13 @@ textarea:focus {
   color: var(--muted);
 }
 
+.wide-btn {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
 .switch {
   display: inline-flex;
 }

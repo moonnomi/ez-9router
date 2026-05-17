@@ -87,6 +87,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     fetchModels().then(sendResponse);
     return true;
   }
+  if (message?.type === "testModel") {
+    testModel(message.model).then(sendResponse);
+    return true;
+  }
   if (message?.type === "rebuildMenus") {
     rebuildMenus().then(() => sendResponse({ ok: true }));
     return true;
@@ -275,6 +279,51 @@ async function fetchModels() {
   }
 }
 
+async function testModel(model) {
+  const settings = await getSettings();
+  const target = model || settings.model;
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(`${trimSlash(settings.endpoint)}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${settings.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: target,
+        messages: [{ role: "user", content: "Hi" }],
+        stream: false
+      })
+    });
+    const raw = await response.text();
+    const body = parseJson(raw);
+    const result = {
+      model: target,
+      ok: response.ok,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      message: response.ok
+        ? body.choices?.[0]?.message?.content || "OK"
+        : body?.error?.message || raw.slice(0, 1000),
+      hint: response.ok ? "" : buildProviderHint(target, {}, body, raw)
+    };
+    await logDebug(settings, response.ok ? "model-test" : "model-test-error", result);
+    return result;
+  } catch (error) {
+    const result = {
+      model: target,
+      ok: false,
+      status: 0,
+      durationMs: Date.now() - startedAt,
+      message: error.message,
+      hint: "Could not reach 9router or the selected provider."
+    };
+    await logDebug(settings, "model-test-error", result);
+    return result;
+  }
+}
+
 async function runJob(jobId, settings, prompt, input, tabId, origin) {
   const startedAt = Date.now();
   let requestSummary = null;
@@ -312,9 +361,7 @@ async function runJob(jobId, settings, prompt, input, tabId, origin) {
         providerCode: body?.error?.code || body?.code || null,
         providerMessage: body?.error?.message || body?.message || raw.slice(0, 1200),
         raw: raw.slice(0, 3000),
-        hint: input.imageUrl
-          ? "The selected model/provider rejected the image payload. Try cx/gpt-5.5, reduce snip size, or check whether this model supports vision through 9router."
-          : ""
+        hint: buildProviderHint(settings.model, input, body, raw)
       };
       await logDebug(settings, "error", { ...requestSummary, details, durationMs: Date.now() - startedAt });
       throw Object.assign(new Error(details.providerMessage || `HTTP ${response.status}`), { details });
@@ -514,6 +561,20 @@ function summarizeImageUrl(value = "") {
     bytesApprox: Math.round(match[2].length * 0.75),
     chars: value.length
   };
+}
+
+function buildProviderHint(model, input, body, raw) {
+  const text = `${body?.error?.message || ""}\n${raw || ""}`.toLowerCase();
+  if (model === "ag/gemini-3.1-pro-high" && text.includes("invalid_argument")) {
+    return "This 9router model alias currently rejects even a minimal text request. Use ag/gemini-3.1-pro-low, ag/gemini-3-flash, or cx/gpt-5.5 for now.";
+  }
+  if (input.imageUrl) {
+    return "The selected model/provider rejected the image payload. Try cx/gpt-5.5, reduce snip size, or choose a known vision-capable model.";
+  }
+  if (model.startsWith("ag/") && text.includes("invalid_argument")) {
+    return "The Antigravity route rejected the request shape or model alias. Test the model from the popup and try another ag/* alias if it fails.";
+  }
+  return "";
 }
 
 async function logDebug(settings, type, data) {
