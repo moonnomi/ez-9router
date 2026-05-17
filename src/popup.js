@@ -20,8 +20,20 @@ const debugList = document.querySelector("#debugList");
 const copyLogs = document.querySelector("#copyLogs");
 const clearLogs = document.querySelector("#clearLogs");
 const testModel = document.querySelector("#testModel");
+const stealthBanner = document.querySelector("#stealthBanner");
+const stealthOff = document.querySelector("#stealthOff");
+const secretSequence = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "KeyB", "KeyA", "Enter"];
+let secretIndex = 0;
 
 init();
+
+document.addEventListener("keydown", async (event) => {
+  secretIndex = event.code === secretSequence[secretIndex] ? secretIndex + 1 : (event.code === secretSequence[0] ? 1 : 0);
+  if (secretIndex !== secretSequence.length) return;
+  secretIndex = 0;
+  const { stealthMode } = await chrome.storage.local.get("stealthMode");
+  await setStealthMode(!stealthMode);
+});
 
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   applyResolvedTheme(theme.querySelector(".active")?.dataset.theme || "system");
@@ -49,6 +61,10 @@ clearLogs.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "clearDebugLogs" });
   await loadDebugLogs();
   setStatus("Debug logs cleared");
+});
+
+stealthOff.addEventListener("click", async () => {
+  await setStealthMode(false);
 });
 
 testModel.addEventListener("click", async () => {
@@ -85,6 +101,7 @@ async function init() {
     "theme",
     "resumeConversations",
     "debugEnabled",
+    "stealthMode",
     "prompts",
     "models"
   ]);
@@ -92,6 +109,7 @@ async function init() {
   apiKey.value = settings.apiKey || "sk_9-router";
   resumeConversations.checked = settings.resumeConversations !== false;
   debugEnabled.checked = settings.debugEnabled !== false;
+  renderStealthMode(Boolean(settings.stealthMode));
   setTheme(settings.theme || "system");
   renderModelOptions(settings.models || [], settings.model || "cx/gpt-5.5");
   renderPrompts(settings.prompts || toPromptObjects(DEFAULT_PROMPTS));
@@ -110,6 +128,7 @@ async function save() {
     theme: theme.querySelector(".active")?.dataset.theme || "system",
     resumeConversations: resumeConversations.checked,
     debugEnabled: debugEnabled.checked,
+    stealthMode: !stealthBanner.hidden,
     prompts
   });
   chrome.runtime.sendMessage({ type: "rebuildMenus" });
@@ -192,6 +211,17 @@ function applyResolvedTheme(value) {
   document.documentElement.dataset.theme = value === "system"
     ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
     : value;
+}
+
+async function setStealthMode(enabled) {
+  await chrome.storage.local.set({ stealthMode: enabled });
+  renderStealthMode(enabled);
+  setStatus(enabled ? "Mode enabled" : "Mode disabled");
+}
+
+function renderStealthMode(enabled) {
+  stealthBanner.hidden = !enabled;
+  document.documentElement.classList.toggle("stealth-mode", enabled);
 }
 
 async function loadDashboard() {

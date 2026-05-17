@@ -5,6 +5,7 @@ const DEFAULTS = {
   theme: "system",
   resumeConversations: true,
   debugEnabled: true,
+  stealthMode: false,
   prompts: [
     {
       id: "answer",
@@ -243,6 +244,7 @@ async function startJob(tab, settings, prompt, input) {
     input,
     origin,
     theme: settings.theme,
+    stealthMode: settings.stealthMode,
     anchor: anchor?.point || null,
     createdAt
   };

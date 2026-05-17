@@ -43,6 +43,24 @@
   box-sizing: border-box;
 }
 
+#ez9router-stealth {
+  position: fixed;
+  z-index: 2147483647;
+  overflow: hidden;
+  max-height: 130px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #000;
+  padding: 10px 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .18);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  animation: ez9-stealth-in 80ms ease-out;
+}
+
 .ez9-card {
   position: relative;
   overflow: hidden;
@@ -353,5 +371,16 @@
   50% {
     opacity: 1;
     text-shadow: 0 0 18px rgba(255, 126, 47, .45);
+  }
+}
+
+@keyframes ez9-stealth-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

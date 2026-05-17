@@ -1,5 +1,6 @@
 const ROOT_ID = "ez9router-root";
 const SNIP_ID = "ez9router-snip";
+const STEALTH_ID = "ez9router-stealth";
 let currentJob = null;
 let savedPosition = null;
 let lastContextPoint = null;
@@ -11,12 +12,23 @@ document.addEventListener("contextmenu", (event) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "ez9router:showJob") {
     currentJob = message.job;
+    if (currentJob?.stealthMode) {
+      document.getElementById(ROOT_ID)?.remove();
+      sendResponse({ ok: true });
+      return;
+    }
     render();
     sendResponse({ ok: true });
   }
 
   if (message?.type === "ez9router:updateJob") {
     currentJob = { ...currentJob, ...message.job };
+    if (currentJob?.stealthMode) {
+      document.getElementById(ROOT_ID)?.remove();
+      if (currentJob.status === "done") renderStealthAnswer(currentJob.answer || "");
+      sendResponse({ ok: true });
+      return;
+    }
     render();
     sendResponse({ ok: true });
   }
@@ -78,6 +90,26 @@ function render() {
     event.currentTarget.textContent = "Copied";
     setTimeout(() => (event.currentTarget.textContent = "Copy"), 1200);
   });
+}
+
+function renderStealthAnswer(answer) {
+  document.getElementById(STEALTH_ID)?.remove();
+  const box = document.createElement("div");
+  box.id = STEALTH_ID;
+  box.textContent = answer;
+  document.documentElement.append(box);
+
+  const width = Math.min(360, window.innerWidth - 24);
+  const anchor = currentJob?.anchor;
+  const preferredLeft = anchor ? anchor.x + 12 : Math.max(12, window.innerWidth - width - 18);
+  const fallbackLeft = anchor ? anchor.x - width - 12 : preferredLeft;
+  const left = preferredLeft + width < window.innerWidth - 12 ? preferredLeft : fallbackLeft;
+  const top = anchor ? anchor.y - 4 : 18;
+  box.style.left = `${clamp(left, 10, window.innerWidth - width - 10)}px`;
+  box.style.top = `${clamp(top, 10, window.innerHeight - 80)}px`;
+  box.style.maxWidth = `${width}px`;
+
+  setTimeout(() => box.remove(), 1000);
 }
 
 function ensureRoot() {

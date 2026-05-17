@@ -33,6 +33,14 @@
   --shadow: 0 20px 50px rgba(101, 42, 17, .15), 0 0 34px rgba(255, 85, 31, .08);
 }
 
+:root.stealth-mode {
+  --accent: #7a5cff;
+  --accent-2: #22b7ff;
+  --line-strong: rgba(101, 128, 255, .48);
+  --panel-soft: rgba(101, 128, 255, .1);
+  background: radial-gradient(circle at 18% 0, rgba(82, 93, 255, .17), transparent 30%), var(--bg);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -49,6 +57,29 @@ body {
   display: grid;
   gap: 12px;
   padding: 18px;
+}
+
+.stealth-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(122, 92, 255, .18), rgba(34, 183, 255, .14));
+  box-shadow: 0 16px 38px rgba(70, 85, 255, .16);
+}
+
+.stealth-banner[hidden] {
+  display: none;
+}
+
+.stealth-banner span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: lowercase;
 }
 
 .brand {
