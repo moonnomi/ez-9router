@@ -2,6 +2,11 @@ const ROOT_ID = "ez9router-root";
 const SNIP_ID = "ez9router-snip";
 let currentJob = null;
 let savedPosition = null;
+let lastContextPoint = null;
+
+document.addEventListener("contextmenu", (event) => {
+  lastContextPoint = { x: event.clientX, y: event.clientY };
+}, true);
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "ez9router:showJob") {
@@ -28,6 +33,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       title: document.title,
       url: location.href
     });
+  }
+
+  if (message?.type === "ez9router:getContextPoint") {
+    sendResponse({ ok: true, point: lastContextPoint });
   }
 });
 
@@ -83,9 +92,12 @@ function ensureRoot() {
 }
 
 function positionRoot(root) {
-  const width = Math.min(360, window.innerWidth - 28);
-  const left = savedPosition?.left ?? Math.max(14, window.innerWidth - width - 22);
-  const top = savedPosition?.top ?? 22;
+  const width = Math.min(300, window.innerWidth - 24);
+  const anchor = currentJob?.anchor;
+  const preferredLeft = anchor ? anchor.x + 14 : Math.max(12, window.innerWidth - width - 18);
+  const fallbackLeft = anchor ? anchor.x - width - 14 : preferredLeft;
+  const left = savedPosition?.left ?? (preferredLeft + width < window.innerWidth - 12 ? preferredLeft : fallbackLeft);
+  const top = savedPosition?.top ?? (anchor ? anchor.y - 8 : 18);
   root.style.left = `${clamp(left, 14, window.innerWidth - width - 14)}px`;
   root.style.top = `${clamp(top, 14, window.innerHeight - 160)}px`;
   root.style.right = "auto";
@@ -209,8 +221,7 @@ function renderBody() {
   if (currentJob?.status === "running") {
     return `
       <div class="ez9-thinking">
-        <span></span><span></span><span></span>
-        <p>Thinking through it</p>
+        <p>Thinking</p>
       </div>
     `;
   }

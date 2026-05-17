@@ -234,6 +234,7 @@ async function startJob(tab, settings, prompt, input) {
   const jobId = crypto.randomUUID();
   const origin = getOrigin(input.pageUrl || tab?.url || "");
   const createdAt = Date.now();
+  const anchor = await postToTab(tab?.id, { type: "ez9router:getContextPoint" });
   const job = {
     id: jobId,
     status: "running",
@@ -242,6 +243,7 @@ async function startJob(tab, settings, prompt, input) {
     input,
     origin,
     theme: settings.theme,
+    anchor: anchor?.point || null,
     createdAt
   };
 
