@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Forms Answer Finder",
+  "description": "Send selected text or images to a 9router model from the context menu.",
+  "version": "0.1.0",
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Forms Answer Finder",
+    "default_popup": "src/popup.html"
+  }
+}

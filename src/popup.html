@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Forms Answer Finder</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <div>
+          <h1>Forms Answer Finder</h1>
+          <p>9router context prompts</p>
+        </div>
+        <button id="refreshModels" title="Refresh models">Refresh</button>
+      </header>
+
+      <label>
+        <span>9router URL</span>
+        <input id="endpoint" spellcheck="false">
+      </label>
+
+      <label>
+        <span>API key</span>
+        <input id="apiKey" type="password" spellcheck="false">
+      </label>
+
+      <label>
+        <span>Model</span>
+        <select id="model"></select>
+      </label>
+
+      <section>
+        <div class="section-title">Context prompts</div>
+        <div id="promptList" class="prompt-list"></div>
+      </section>
+
+      <p id="status" role="status"></p>
+    </main>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

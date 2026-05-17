@@ -1,0 +1,27 @@
+# Forms Answer Finder
+
+Chrome-compatible MV3 extension for sending selected text or right-clicked images to a local 9router model.
+
+## Features
+
+- Right-click selected text or an image and run a prompt.
+- Popup dashboard for 9router URL, API key, default model, and prompt labels.
+- Fetches available models from `GET /v1/models`.
+- Opens a focused result window with formatted answers and copy support.
+
+## Local Setup
+
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Click **Load unpacked**.
+4. Select this repository folder.
+5. Open the extension popup and confirm:
+   - URL: `http://127.0.0.1:20128`
+   - API key: `sk_9-router`
+   - Model: `cx/gpt-5.5` or another model from 9router.
+
+## Notes
+
+- No provider secrets are committed. Settings are stored in local browser extension storage.
+- Image prompts require a model/provider that accepts OpenAI-style vision content.
+- 9router must allow requests from the extension context and be reachable from the browser.

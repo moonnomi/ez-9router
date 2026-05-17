@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Answer</title>
+    <link rel="stylesheet" href="result.css">
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <div>
+          <p id="mode">Running prompt</p>
+          <h1 id="title">Working...</h1>
+        </div>
+        <button id="copy">Copy</button>
+      </header>
+
+      <section class="answer">
+        <div id="state" class="state">Sending to model...</div>
+        <article id="answer"></article>
+      </section>
+
+      <section class="source">
+        <div class="label">Selection</div>
+        <pre id="source"></pre>
+      </section>
+    </main>
+    <script src="result.js" type="module"></script>
+  </body>
+</html>
