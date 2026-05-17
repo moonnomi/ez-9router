@@ -1,10 +1,14 @@
 #ez9router-root {
   position: fixed;
   z-index: 2147483647;
-  width: min(420px, calc(100vw - 28px));
+  width: min(340px, calc(100vw - 28px));
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ez9-text);
   animation: ez9-pop 180ms cubic-bezier(.2, .8, .2, 1);
+}
+
+#ez9router-root.dragging {
+  animation: none;
 }
 
 #ez9router-root[data-theme="light"] {
@@ -55,7 +59,14 @@
   align-items: start;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 18px 8px;
+  padding: 14px 14px 7px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+#ez9router-root.dragging .ez9-head {
+  cursor: grabbing;
 }
 
 .ez9-kicker {
@@ -69,7 +80,7 @@
 .ez9-head h2 {
   margin: 3px 0 0;
   color: var(--ez9-text);
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1.2;
 }
 
@@ -86,8 +97,8 @@
 }
 
 .ez9-icon {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   line-height: 1;
 }
@@ -102,7 +113,7 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 0 18px 14px;
+  padding: 0 14px 10px;
 }
 
 .ez9-meta span {
@@ -120,7 +131,7 @@
   align-items: center;
   gap: 7px;
   margin: 0 18px 18px;
-  padding: 16px;
+  padding: 13px;
   border-radius: 14px;
   background: var(--ez9-panel);
 }
@@ -144,16 +155,16 @@
 .ez9-thinking p {
   margin: 0 0 0 4px;
   color: var(--ez9-muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 750;
 }
 
 .ez9-answer {
-  max-height: min(52vh, 520px);
+  max-height: min(46vh, 420px);
   overflow: auto;
-  padding: 0 18px 4px;
+  padding: 0 14px 4px;
   color: var(--ez9-text);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.58;
 }
 
@@ -174,7 +185,7 @@
 }
 
 .ez9-error {
-  margin: 0 18px 18px;
+  margin: 0 14px 14px;
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--ez9-accent), transparent 55%);
   border-radius: 14px;
@@ -184,7 +195,7 @@
 }
 
 .ez9-source {
-  margin: 6px 18px 14px;
+  margin: 6px 14px 12px;
   color: var(--ez9-muted);
   font-size: 12px;
 }
@@ -206,13 +217,50 @@
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  padding: 12px 18px 18px;
+  padding: 10px 14px 14px;
 }
 
 .ez9-btn {
   padding: 8px 12px;
   background: linear-gradient(135deg, var(--ez9-accent), var(--ez9-accent-2));
   color: #fff;
+}
+
+#ez9router-snip {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  cursor: crosshair;
+  background: rgba(0, 0, 0, .34);
+  backdrop-filter: blur(1px);
+  user-select: none;
+}
+
+.ez9-snip-help {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 122, 47, .38);
+  border-radius: 999px;
+  background: rgba(24, 18, 16, .88);
+  color: #fff3ed;
+  padding: 9px 14px;
+  font: 800 13px Inter, ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .26);
+}
+
+.ez9-snip-box {
+  position: fixed;
+  display: none;
+  border: 2px solid #ff6a2a;
+  border-radius: 10px;
+  background: rgba(255, 106, 42, .12);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .24), 0 0 32px rgba(255, 106, 42, .44);
+}
+
+.ez9-snip-box[style*="width"] {
+  display: block;
 }
 
 .ez9-btn.ghost {

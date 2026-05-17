@@ -5,7 +5,9 @@ Chrome-compatible MV3 extension for sending selected text or right-clicked image
 ## Features
 
 - Right-click selected text or an image and run a prompt.
+- Right-click a page to use snip mode, prompt-guided snip mode, custom snip prompts, or send the full HTML.
 - Popup dashboard for 9router URL, API key, default model, and prompt labels.
+- Per-site conversation memory can be resumed or cleared from the popup.
 - Fetches available models from `GET /v1/models`.
 - Opens a Grammarly-style inline answer card with formatted answers and copy support.
 - Supports light, dark, and system themes using a 9router-style orange-red accent.

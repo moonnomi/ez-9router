@@ -1,10 +1,11 @@
 const ROOT_ID = "ez9router-root";
+const SNIP_ID = "ez9router-snip";
 let currentJob = null;
+let savedPosition = null;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "ez9router:showJob") {
     currentJob = message.job;
-    positionRoot(ensureRoot());
     render();
     sendResponse({ ok: true });
   }
@@ -14,6 +15,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     render();
     sendResponse({ ok: true });
   }
+
+  if (message?.type === "ez9router:startSnip") {
+    startSnip(message);
+    sendResponse({ ok: true });
+  }
+
+  if (message?.type === "ez9router:getHtml") {
+    sendResponse({
+      ok: true,
+      html: document.documentElement.outerHTML,
+      title: document.title,
+      url: location.href
+    });
+  }
 });
 
 function render() {
@@ -22,7 +37,7 @@ function render() {
   root.innerHTML = `
     <div class="ez9-card" role="dialog" aria-live="polite">
       <div class="ez9-glow"></div>
-      <header class="ez9-head">
+      <header class="ez9-head" data-drag-handle>
         <div>
           <div class="ez9-kicker">ez-9router</div>
           <h2>${escapeHtml(currentJob?.title || "Answer")}</h2>
@@ -42,6 +57,7 @@ function render() {
     </div>
   `;
 
+  attachDrag(root);
   root.querySelectorAll("[data-action='close']").forEach((button) => {
     button.addEventListener("click", () => root.remove());
   });
@@ -64,27 +80,126 @@ function ensureRoot() {
 }
 
 function positionRoot(root) {
-  const rect = getSelectionRect();
-  if (!rect) {
-    root.style.top = "24px";
-    root.style.right = "24px";
-    return;
-  }
-
-  const width = Math.min(420, window.innerWidth - 28);
-  const left = clamp(rect.left, 14, window.innerWidth - width - 14);
-  const top = clamp(rect.bottom + 12, 14, window.innerHeight - 180);
-  root.style.left = `${left}px`;
-  root.style.top = `${top}px`;
+  const width = Math.min(340, window.innerWidth - 28);
+  const left = savedPosition?.left ?? Math.max(14, window.innerWidth - width - 22);
+  const top = savedPosition?.top ?? 22;
+  root.style.left = `${clamp(left, 14, window.innerWidth - width - 14)}px`;
+  root.style.top = `${clamp(top, 14, window.innerHeight - 160)}px`;
+  root.style.right = "auto";
   root.style.width = `${width}px`;
 }
 
-function getSelectionRect() {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
-  const rect = selection.getRangeAt(0).getBoundingClientRect();
-  if (!rect.width && !rect.height) return null;
-  return rect;
+function attachDrag(root) {
+  const handle = root.querySelector("[data-drag-handle]");
+  if (!handle) return;
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("button")) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const box = root.getBoundingClientRect();
+    handle.setPointerCapture(event.pointerId);
+    root.classList.add("dragging");
+
+    const move = (moveEvent) => {
+      const left = clamp(box.left + moveEvent.clientX - startX, 8, window.innerWidth - root.offsetWidth - 8);
+      const top = clamp(box.top + moveEvent.clientY - startY, 8, window.innerHeight - 80);
+      savedPosition = { left, top };
+      root.style.left = `${left}px`;
+      root.style.top = `${top}px`;
+    };
+
+    const up = () => {
+      root.classList.remove("dragging");
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+    };
+
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  });
+}
+
+function startSnip(config) {
+  document.getElementById(SNIP_ID)?.remove();
+  const layer = document.createElement("div");
+  layer.id = SNIP_ID;
+  layer.innerHTML = `
+    <div class="ez9-snip-help">Drag to snip. Esc cancels.</div>
+    <div class="ez9-snip-box"></div>
+  `;
+  document.documentElement.append(layer);
+
+  const box = layer.querySelector(".ez9-snip-box");
+  let start = null;
+
+  const onDown = (event) => {
+    event.preventDefault();
+    start = { x: event.clientX, y: event.clientY };
+    drawBox(box, start.x, start.y, 1, 1);
+    layer.setPointerCapture(event.pointerId);
+  };
+
+  const onMove = (event) => {
+    if (!start) return;
+    const left = Math.min(start.x, event.clientX);
+    const top = Math.min(start.y, event.clientY);
+    drawBox(box, left, top, Math.abs(event.clientX - start.x), Math.abs(event.clientY - start.y));
+  };
+
+  const onUp = async (event) => {
+    if (!start) return;
+    const rect = normalizeRect(start.x, start.y, event.clientX, event.clientY);
+    cleanup();
+    if (rect.width < 8 || rect.height < 8) return;
+    const customPrompt = config.promptMode === "custom"
+      ? window.prompt("Prompt for this snip", "Answer what is shown in this snip.")
+      : "";
+    if (config.promptMode === "custom" && !customPrompt) return;
+    await chrome.runtime.sendMessage({
+      type: "ez9router:snipComplete",
+      promptMode: config.promptMode,
+      promptId: config.promptId,
+      customPrompt,
+      rect,
+      devicePixelRatio: window.devicePixelRatio || 1
+    });
+  };
+
+  const onKey = (event) => {
+    if (event.key === "Escape") cleanup();
+  };
+
+  const cleanup = () => {
+    layer.removeEventListener("pointerdown", onDown);
+    layer.removeEventListener("pointermove", onMove);
+    layer.removeEventListener("pointerup", onUp);
+    document.removeEventListener("keydown", onKey);
+    layer.remove();
+  };
+
+  layer.addEventListener("pointerdown", onDown);
+  layer.addEventListener("pointermove", onMove);
+  layer.addEventListener("pointerup", onUp);
+  document.addEventListener("keydown", onKey);
+}
+
+function drawBox(box, left, top, width, height) {
+  box.style.left = `${left}px`;
+  box.style.top = `${top}px`;
+  box.style.width = `${width}px`;
+  box.style.height = `${height}px`;
+}
+
+function normalizeRect(x1, y1, x2, y2) {
+  return {
+    left: Math.min(x1, x2),
+    top: Math.min(y1, y2),
+    width: Math.abs(x2 - x1),
+    height: Math.abs(y2 - y1)
+  };
 }
 
 function renderBody() {
@@ -105,11 +220,13 @@ function renderBody() {
 }
 
 function renderSource() {
-  const value = currentJob?.input?.text || currentJob?.input?.imageUrl || "";
+  const value = currentJob?.input?.kind === "snip"
+    ? "Browser snip"
+    : (currentJob?.input?.text || currentJob?.input?.imageUrl || "");
   if (!value) return "";
   return `
     <details class="ez9-source">
-      <summary>Selection</summary>
+      <summary>Source</summary>
       <pre>${escapeHtml(value)}</pre>
     </details>
   `;

@@ -11,6 +11,10 @@ const promptList = document.querySelector("#promptList");
 const status = document.querySelector("#status");
 const refreshModels = document.querySelector("#refreshModels");
 const theme = document.querySelector("#theme");
+const resumeConversations = document.querySelector("#resumeConversations");
+const activeOrigin = document.querySelector("#activeOrigin");
+const conversationList = document.querySelector("#conversationList");
+const addPrompt = document.querySelector("#addPrompt");
 
 init();
 
@@ -27,6 +31,19 @@ for (const item of [endpoint, apiKey, model]) {
   item.addEventListener("change", save);
 }
 
+resumeConversations.addEventListener("change", save);
+
+addPrompt.addEventListener("click", async () => {
+  const prompts = readPrompts();
+  prompts.push({
+    id: `custom-${Date.now()}`,
+    title: "Custom prompt",
+    prompt: "Write your prompt here."
+  });
+  renderPrompts(prompts);
+  await save();
+});
+
 theme.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-theme]");
   if (!button) return;
@@ -35,27 +52,34 @@ theme.addEventListener("click", async (event) => {
 });
 
 async function init() {
-  const settings = await chrome.storage.local.get(["endpoint", "apiKey", "model", "theme", "prompts", "models"]);
+  const settings = await chrome.storage.local.get([
+    "endpoint",
+    "apiKey",
+    "model",
+    "theme",
+    "resumeConversations",
+    "prompts",
+    "models"
+  ]);
   endpoint.value = settings.endpoint || "http://127.0.0.1:20128";
   apiKey.value = settings.apiKey || "sk_9-router";
+  resumeConversations.checked = settings.resumeConversations !== false;
   setTheme(settings.theme || "system");
   renderModelOptions(settings.models || [], settings.model || "cx/gpt-5.5");
   renderPrompts(settings.prompts || toPromptObjects(DEFAULT_PROMPTS));
+  await loadDashboard();
   await loadModels(false);
 }
 
 async function save() {
-  const prompts = [...promptList.querySelectorAll(".prompt")].map((row) => ({
-    id: row.dataset.id,
-    title: row.querySelector(".prompt-title").value.trim(),
-    prompt: row.querySelector(".prompt-body").value.trim()
-  })).filter((item) => item.id && item.title && item.prompt);
+  const prompts = readPrompts();
 
   await chrome.storage.local.set({
     endpoint: endpoint.value.trim(),
     apiKey: apiKey.value.trim(),
     model: model.value.trim(),
     theme: theme.querySelector(".active")?.dataset.theme || "system",
+    resumeConversations: resumeConversations.checked,
     prompts
   });
   chrome.runtime.sendMessage({ type: "rebuildMenus" });
@@ -94,14 +118,29 @@ function renderPrompts(prompts) {
     row.className = "prompt";
     row.dataset.id = prompt.id;
     row.innerHTML = `
-      <input class="prompt-title" value="">
+      <div class="prompt-top">
+        <input class="prompt-title" value="">
+        <button class="delete-prompt" title="Delete prompt">x</button>
+      </div>
       <textarea class="prompt-body" rows="3"></textarea>
     `;
     row.querySelector(".prompt-title").value = prompt.title;
     row.querySelector(".prompt-body").value = prompt.prompt;
     row.addEventListener("change", save);
+    row.querySelector(".delete-prompt").addEventListener("click", async () => {
+      row.remove();
+      await save();
+    });
     promptList.append(row);
   }
+}
+
+function readPrompts() {
+  return [...promptList.querySelectorAll(".prompt")].map((row) => ({
+    id: row.dataset.id,
+    title: row.querySelector(".prompt-title").value.trim(),
+    prompt: row.querySelector(".prompt-body").value.trim()
+  })).filter((item) => item.id && item.title && item.prompt);
 }
 
 function toPromptObjects(rows) {
@@ -123,4 +162,47 @@ function applyResolvedTheme(value) {
   document.documentElement.dataset.theme = value === "system"
     ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
     : value;
+}
+
+async function loadDashboard() {
+  const dashboard = await chrome.runtime.sendMessage({ type: "getDashboard" });
+  if (!dashboard?.ok) return;
+  activeOrigin.textContent = dashboard.activeOrigin || "No active site";
+  resumeConversations.checked = dashboard.resumeConversations !== false;
+  renderConversations(dashboard.conversations || [], dashboard.activeOrigin);
+}
+
+function renderConversations(conversations, currentOrigin) {
+  conversationList.innerHTML = "";
+  if (!conversations.length) {
+    conversationList.innerHTML = `<div class="empty">No conversations yet</div>`;
+    return;
+  }
+
+  for (const conversation of conversations.slice(0, 6)) {
+    const item = document.createElement("div");
+    item.className = "conversation";
+    item.innerHTML = `
+      <div>
+        <strong>${escapeHtml(conversation.origin || "site")}</strong>
+        <span>${conversation.messages?.length || 0} messages${conversation.origin === currentOrigin ? " · current" : ""}</span>
+      </div>
+      <button class="small-btn">Clear</button>
+    `;
+    item.querySelector("button").addEventListener("click", async () => {
+      await chrome.runtime.sendMessage({ type: "clearConversation", origin: conversation.origin });
+      await loadDashboard();
+    });
+    conversationList.append(item);
+  }
+}
+
+function escapeHtml(value = "") {
+  return value.replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#039;"
+  })[char]);
 }

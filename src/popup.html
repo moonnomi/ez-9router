@@ -41,7 +41,24 @@
       </section>
 
       <section>
-        <div class="section-title">Context prompts</div>
+        <div class="section-row">
+          <div>
+            <div class="section-title">Conversation</div>
+            <p id="activeOrigin">Current site</p>
+          </div>
+          <label class="switch">
+            <input id="resumeConversations" type="checkbox">
+            <span></span>
+          </label>
+        </div>
+        <div id="conversationList" class="conversation-list"></div>
+      </section>
+
+      <section>
+        <div class="section-row">
+          <div class="section-title">Context prompts</div>
+          <button id="addPrompt" class="small-btn">Add</button>
+        </div>
         <div id="promptList" class="prompt-list"></div>
       </section>
 
