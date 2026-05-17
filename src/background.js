@@ -50,7 +50,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 
   if (id === "faf:snip") {
-    await postToTab(tab?.id, { type: "ez9router:startSnip", promptMode: "default" });
+    await postToTab(tab?.id, { type: "ez9router:startSnip", promptMode: "default", stealthMode: settings.stealthMode });
     return;
   }
 
@@ -58,13 +58,14 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     await postToTab(tab?.id, {
       type: "ez9router:startSnip",
       promptMode: "prompt",
-      promptId: id.slice("faf:snipPrompt:".length)
+      promptId: id.slice("faf:snipPrompt:".length),
+      stealthMode: settings.stealthMode
     });
     return;
   }
 
   if (id === "faf:snipCustom") {
-    await postToTab(tab?.id, { type: "ez9router:startSnip", promptMode: "custom" });
+    await postToTab(tab?.id, { type: "ez9router:startSnip", promptMode: "custom", stealthMode: settings.stealthMode });
     return;
   }
 

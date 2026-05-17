@@ -173,6 +173,7 @@ function startSnip(config) {
   document.getElementById(SNIP_ID)?.remove();
   const layer = document.createElement("div");
   layer.id = SNIP_ID;
+  layer.className = config.stealthMode ? "stealth" : "";
   layer.innerHTML = `
     <div class="ez9-snip-help">Drag to snip. Esc cancels.</div>
     <div class="ez9-snip-box"></div>
@@ -180,7 +181,13 @@ function startSnip(config) {
   document.documentElement.append(layer);
 
   const box = layer.querySelector(".ez9-snip-box");
+  const help = layer.querySelector(".ez9-snip-help");
   let start = null;
+
+  if (config.stealthMode && lastContextPoint) {
+    help.style.left = `${lastContextPoint.x + 12}px`;
+    help.style.top = `${lastContextPoint.y + 12}px`;
+  }
 
   const onDown = (event) => {
     event.preventDefault();
@@ -190,6 +197,10 @@ function startSnip(config) {
   };
 
   const onMove = (event) => {
+    if (config.stealthMode && !start) {
+      help.style.left = `${event.clientX + 12}px`;
+      help.style.top = `${event.clientY + 12}px`;
+    }
     if (!start) return;
     const left = Math.min(start.x, event.clientX);
     const top = Math.min(start.y, event.clientY);

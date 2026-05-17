@@ -325,6 +325,11 @@
   user-select: none;
 }
 
+#ez9router-snip.stealth {
+  background: transparent;
+  backdrop-filter: none;
+}
+
 .ez9-snip-help {
   position: fixed;
   top: 18px;
@@ -339,6 +344,31 @@
   box-shadow: 0 14px 38px rgba(0, 0, 0, .26);
 }
 
+#ez9router-snip.stealth .ez9-snip-help {
+  left: 18px;
+  top: 18px;
+  transform: none;
+  border: 1px solid #d71920;
+  border-radius: 6px;
+  background: #fff;
+  color: #d71920;
+  padding: 4px 7px;
+  font: 700 11px Arial, Helvetica, sans-serif;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
+}
+
+#ez9router-snip.stealth .ez9-snip-help::before {
+  content: "Snip";
+}
+
+#ez9router-snip.stealth .ez9-snip-help {
+  font-size: 0;
+}
+
+#ez9router-snip.stealth .ez9-snip-help::before {
+  font-size: 11px;
+}
+
 .ez9-snip-box {
   position: fixed;
   display: none;
@@ -346,6 +376,13 @@
   border-radius: 10px;
   background: rgba(255, 106, 42, .12);
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, .24), 0 0 32px rgba(255, 106, 42, .44);
+}
+
+#ez9router-snip.stealth .ez9-snip-box {
+  border: 1px solid #d71920;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .ez9-snip-box[style*="width"] {
