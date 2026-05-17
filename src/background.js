@@ -2,6 +2,7 @@ const DEFAULTS = {
   endpoint: "http://127.0.0.1:20128",
   apiKey: "sk_9-router",
   model: "cx/gpt-5.5",
+  theme: "system",
   prompts: [
     {
       id: "answer",
@@ -33,7 +34,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.prompts) rebuildMenus();
 });
 
-chrome.contextMenus.onClicked.addListener(async (info) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!info.menuItemId.toString().startsWith("faf:")) return;
 
   const promptId = info.menuItemId.toString().slice(4);
@@ -53,14 +54,29 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
     }
   });
 
-  chrome.windows.create({
-    url: chrome.runtime.getURL(`src/result.html?job=${encodeURIComponent(jobId)}`),
-    type: "popup",
-    width: 720,
-    height: 820
+  const opened = await postToTab(tab?.id, {
+    type: "ez9router:showJob",
+    job: {
+      id: jobId,
+      status: "running",
+      title: prompt.title,
+      model: settings.model,
+      input,
+      theme: settings.theme,
+      createdAt: Date.now()
+    }
   });
 
-  runJob(jobId, settings, prompt, input);
+  if (!opened) {
+    chrome.windows.create({
+      url: chrome.runtime.getURL(`src/result.html?job=${encodeURIComponent(jobId)}`),
+      type: "popup",
+      width: 720,
+      height: 820
+    });
+  }
+
+  runJob(jobId, settings, prompt, input, tab?.id);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -106,7 +122,7 @@ async function fetchModels() {
   }
 }
 
-async function runJob(jobId, settings, prompt, input) {
+async function runJob(jobId, settings, prompt, input, tabId) {
   try {
     const messages = [
       {
@@ -139,12 +155,12 @@ async function runJob(jobId, settings, prompt, input) {
       status: "done",
       answer: body.choices?.[0]?.message?.content || "",
       usage: body.usage || null
-    });
+    }, tabId);
   } catch (error) {
     await updateJob(jobId, {
       status: "error",
       error: error.message
-    });
+    }, tabId);
   }
 }
 
@@ -170,10 +186,12 @@ async function toDataUrl(url) {
   return `data:${blob.type || "application/octet-stream"};base64,${btoa(binary)}`;
 }
 
-async function updateJob(jobId, patch) {
+async function updateJob(jobId, patch, tabId) {
   const key = `job:${jobId}`;
   const existing = (await chrome.storage.session.get(key))[key] || {};
-  await chrome.storage.session.set({ [key]: { ...existing, ...patch, updatedAt: Date.now() } });
+  const job = { ...existing, ...patch, updatedAt: Date.now() };
+  await chrome.storage.session.set({ [key]: job });
+  await postToTab(tabId, { type: "ez9router:updateJob", job });
 }
 
 function buildInput(info) {
@@ -195,4 +213,14 @@ function compact(value) {
 
 function trimSlash(value) {
   return value.replace(/\/+$/, "");
+}
+
+async function postToTab(tabId, message) {
+  if (!tabId) return false;
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -1,4 +1,4 @@
-# Forms Answer Finder
+# ez-9router
 
 Chrome-compatible MV3 extension for sending selected text or right-clicked images to a local 9router model.
 
@@ -7,7 +7,8 @@ Chrome-compatible MV3 extension for sending selected text or right-clicked image
 - Right-click selected text or an image and run a prompt.
 - Popup dashboard for 9router URL, API key, default model, and prompt labels.
 - Fetches available models from `GET /v1/models`.
-- Opens a focused result window with formatted answers and copy support.
+- Opens a Grammarly-style inline answer card with formatted answers and copy support.
+- Supports light, dark, and system themes using a 9router-style orange-red accent.
 
 ## Local Setup
 

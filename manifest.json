@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Forms Answer Finder",
+  "name": "ez-9router",
   "description": "Send selected text or images to a 9router model from the context menu.",
   "version": "0.1.0",
   "permissions": [
@@ -17,8 +17,22 @@
     "service_worker": "src/background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "css": [
+        "src/content.css"
+      ]
+    }
+  ],
   "action": {
-    "default_title": "Forms Answer Finder",
+    "default_title": "ez-9router",
     "default_popup": "src/popup.html"
   }
 }

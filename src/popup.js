@@ -10,8 +10,13 @@ const model = document.querySelector("#model");
 const promptList = document.querySelector("#promptList");
 const status = document.querySelector("#status");
 const refreshModels = document.querySelector("#refreshModels");
+const theme = document.querySelector("#theme");
 
 init();
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  applyResolvedTheme(theme.querySelector(".active")?.dataset.theme || "system");
+});
 
 refreshModels.addEventListener("click", async () => {
   await save();
@@ -22,10 +27,18 @@ for (const item of [endpoint, apiKey, model]) {
   item.addEventListener("change", save);
 }
 
+theme.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-theme]");
+  if (!button) return;
+  setTheme(button.dataset.theme);
+  await save();
+});
+
 async function init() {
-  const settings = await chrome.storage.local.get(["endpoint", "apiKey", "model", "prompts", "models"]);
+  const settings = await chrome.storage.local.get(["endpoint", "apiKey", "model", "theme", "prompts", "models"]);
   endpoint.value = settings.endpoint || "http://127.0.0.1:20128";
   apiKey.value = settings.apiKey || "sk_9-router";
+  setTheme(settings.theme || "system");
   renderModelOptions(settings.models || [], settings.model || "cx/gpt-5.5");
   renderPrompts(settings.prompts || toPromptObjects(DEFAULT_PROMPTS));
   await loadModels(false);
@@ -42,6 +55,7 @@ async function save() {
     endpoint: endpoint.value.trim(),
     apiKey: apiKey.value.trim(),
     model: model.value.trim(),
+    theme: theme.querySelector(".active")?.dataset.theme || "system",
     prompts
   });
   chrome.runtime.sendMessage({ type: "rebuildMenus" });
@@ -96,4 +110,17 @@ function toPromptObjects(rows) {
 
 function setStatus(message) {
   status.textContent = message;
+}
+
+function setTheme(value) {
+  for (const button of theme.querySelectorAll("button")) {
+    button.classList.toggle("active", button.dataset.theme === value);
+  }
+  applyResolvedTheme(value);
+}
+
+function applyResolvedTheme(value) {
+  document.documentElement.dataset.theme = value === "system"
+    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    : value;
 }

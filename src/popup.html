@@ -3,17 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Forms Answer Finder</title>
+    <title>ez-9router</title>
     <link rel="stylesheet" href="popup.css">
   </head>
   <body>
     <main class="shell">
       <header>
         <div>
-          <h1>Forms Answer Finder</h1>
-          <p>9router context prompts</p>
+          <h1>ez-9router</h1>
+          <p>Local context prompts</p>
         </div>
-        <button id="refreshModels" title="Refresh models">Refresh</button>
+        <button id="refreshModels" class="icon-btn" title="Refresh models">Refresh</button>
       </header>
 
       <label>
@@ -30,6 +30,15 @@
         <span>Model</span>
         <select id="model"></select>
       </label>
+
+      <section>
+        <div class="section-title">Theme</div>
+        <div class="segmented" id="theme">
+          <button data-theme="system">System</button>
+          <button data-theme="light">Light</button>
+          <button data-theme="dark">Dark</button>
+        </div>
+      </section>
 
       <section>
         <div class="section-title">Context prompts</div>
