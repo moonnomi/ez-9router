@@ -56,6 +56,24 @@
 
       <section>
         <div class="section-row">
+          <div>
+            <div class="section-title">Debug logs</div>
+            <p>Sanitized request/error traces</p>
+          </div>
+          <label class="switch">
+            <input id="debugEnabled" type="checkbox">
+            <span></span>
+          </label>
+        </div>
+        <div class="debug-actions">
+          <button id="copyLogs" class="small-btn">Copy</button>
+          <button id="clearLogs" class="small-btn">Clear</button>
+        </div>
+        <div id="debugList" class="debug-list"></div>
+      </section>
+
+      <section>
+        <div class="section-row">
           <div class="section-title">Context prompts</div>
           <button id="addPrompt" class="small-btn">Add</button>
         </div>

@@ -8,6 +8,7 @@ Chrome-compatible MV3 extension for sending selected text or right-clicked image
 - Right-click a page to use snip mode, prompt-guided snip mode, custom snip prompts, or send the full HTML.
 - Popup dashboard for 9router URL, API key, default model, and prompt labels.
 - Per-site conversation memory can be resumed or cleared from the popup.
+- Debug logs capture sanitized request shape, image metadata, timing, and provider errors for troubleshooting.
 - Fetches available models from `GET /v1/models`.
 - Opens a Grammarly-style inline answer card with formatted answers and copy support.
 - Supports light, dark, and system themes using a 9router-style orange-red accent.
@@ -27,4 +28,5 @@ Chrome-compatible MV3 extension for sending selected text or right-clicked image
 
 - No provider secrets are committed. Settings are stored in local browser extension storage.
 - Image prompts require a model/provider that accepts OpenAI-style vision content.
+- Some routed models may reject image payloads even when text works. Use the popup debug logs to inspect the provider error.
 - 9router must allow requests from the extension context and be reachable from the browser.

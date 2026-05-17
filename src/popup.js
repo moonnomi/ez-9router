@@ -15,6 +15,10 @@ const resumeConversations = document.querySelector("#resumeConversations");
 const activeOrigin = document.querySelector("#activeOrigin");
 const conversationList = document.querySelector("#conversationList");
 const addPrompt = document.querySelector("#addPrompt");
+const debugEnabled = document.querySelector("#debugEnabled");
+const debugList = document.querySelector("#debugList");
+const copyLogs = document.querySelector("#copyLogs");
+const clearLogs = document.querySelector("#clearLogs");
 
 init();
 
@@ -32,6 +36,19 @@ for (const item of [endpoint, apiKey, model]) {
 }
 
 resumeConversations.addEventListener("change", save);
+debugEnabled.addEventListener("change", save);
+
+copyLogs.addEventListener("click", async () => {
+  const logs = await chrome.runtime.sendMessage({ type: "getDebugLogs" });
+  await navigator.clipboard.writeText(JSON.stringify(logs?.logs || [], null, 2));
+  setStatus("Debug logs copied");
+});
+
+clearLogs.addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ type: "clearDebugLogs" });
+  await loadDebugLogs();
+  setStatus("Debug logs cleared");
+});
 
 addPrompt.addEventListener("click", async () => {
   const prompts = readPrompts();
@@ -58,16 +75,19 @@ async function init() {
     "model",
     "theme",
     "resumeConversations",
+    "debugEnabled",
     "prompts",
     "models"
   ]);
   endpoint.value = settings.endpoint || "http://127.0.0.1:20128";
   apiKey.value = settings.apiKey || "sk_9-router";
   resumeConversations.checked = settings.resumeConversations !== false;
+  debugEnabled.checked = settings.debugEnabled !== false;
   setTheme(settings.theme || "system");
   renderModelOptions(settings.models || [], settings.model || "cx/gpt-5.5");
   renderPrompts(settings.prompts || toPromptObjects(DEFAULT_PROMPTS));
   await loadDashboard();
+  await loadDebugLogs();
   await loadModels(false);
 }
 
@@ -80,6 +100,7 @@ async function save() {
     model: model.value.trim(),
     theme: theme.querySelector(".active")?.dataset.theme || "system",
     resumeConversations: resumeConversations.checked,
+    debugEnabled: debugEnabled.checked,
     prompts
   });
   chrome.runtime.sendMessage({ type: "rebuildMenus" });
@@ -185,7 +206,7 @@ function renderConversations(conversations, currentOrigin) {
     item.innerHTML = `
       <div>
         <strong>${escapeHtml(conversation.origin || "site")}</strong>
-        <span>${conversation.messages?.length || 0} messages${conversation.origin === currentOrigin ? " · current" : ""}</span>
+        <span>${conversation.messages?.length || 0} messages${conversation.origin === currentOrigin ? " - current" : ""}</span>
       </div>
       <button class="small-btn">Clear</button>
     `;
@@ -194,6 +215,26 @@ function renderConversations(conversations, currentOrigin) {
       await loadDashboard();
     });
     conversationList.append(item);
+  }
+}
+
+async function loadDebugLogs() {
+  const result = await chrome.runtime.sendMessage({ type: "getDebugLogs" });
+  const logs = result?.logs || [];
+  debugList.innerHTML = "";
+  if (!logs.length) {
+    debugList.innerHTML = `<div class="empty">No debug logs yet</div>`;
+    return;
+  }
+
+  for (const log of logs.slice(-4).reverse()) {
+    const row = document.createElement("details");
+    row.className = "debug-row";
+    row.innerHTML = `
+      <summary>${new Date(log.at).toLocaleTimeString()} - ${escapeHtml(log.type)} - ${escapeHtml(log.data?.model || "")}</summary>
+      <pre>${escapeHtml(JSON.stringify(log.data, null, 2))}</pre>
+    `;
+    debugList.append(row);
   }
 }
 

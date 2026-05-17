@@ -213,10 +213,26 @@ function renderBody() {
   }
 
   if (currentJob?.status === "error") {
-    return `<div class="ez9-error">${escapeHtml(currentJob.error || "Request failed.")}</div>`;
+    return `
+      <div class="ez9-error">
+        <strong>${escapeHtml(currentJob.error || "Request failed.")}</strong>
+        ${renderErrorDetails()}
+      </div>
+    `;
   }
 
   return `<article class="ez9-answer">${renderMarkdownLite(currentJob?.answer || "")}</article>`;
+}
+
+function renderErrorDetails() {
+  const details = currentJob?.errorDetails;
+  if (!details) return "";
+  return `
+    <details>
+      <summary>Debug details</summary>
+      <pre>${escapeHtml(JSON.stringify(details, null, 2))}</pre>
+    </details>
+  `;
 }
 
 function renderSource() {

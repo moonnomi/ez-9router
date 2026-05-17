@@ -245,6 +245,38 @@ textarea:focus {
   gap: 8px;
 }
 
+.debug-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.debug-list {
+  display: grid;
+  gap: 8px;
+}
+
+.debug-row {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 9px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.debug-row summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.debug-row pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .conversation,
 .empty {
   border: 1px solid var(--line);

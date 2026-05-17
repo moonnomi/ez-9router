@@ -4,6 +4,7 @@ const DEFAULTS = {
   model: "cx/gpt-5.5",
   theme: "system",
   resumeConversations: true,
+  debugEnabled: true,
   prompts: [
     {
       id: "answer",
@@ -102,6 +103,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     clearConversation(message.origin).then(sendResponse);
     return true;
   }
+  if (message?.type === "getDebugLogs") {
+    getDebugLogs().then(sendResponse);
+    return true;
+  }
+  if (message?.type === "clearDebugLogs") {
+    clearDebugLogs().then(sendResponse);
+    return true;
+  }
 });
 
 async function rebuildMenus() {
@@ -155,9 +164,10 @@ async function handleSnipComplete(message, tab) {
   try {
     const settings = await getSettings();
     const prompt = await resolveSnipPrompt(settings, message);
-    const imageUrl = await cropVisibleTab(tab.windowId, message.rect, message.devicePixelRatio || 1);
+    const snip = await cropVisibleTab(tab.windowId, message.rect, message.devicePixelRatio || 1);
     await startJob(tab, settings, prompt, {
-      imageUrl,
+      imageUrl: snip.dataUrl,
+      imageMeta: snip.meta,
       pageUrl: tab?.url || "",
       kind: "snip"
     });
@@ -195,11 +205,25 @@ async function cropVisibleTab(windowId, rect, devicePixelRatio) {
   const sy = Math.max(0, Math.round(rect.top * scale));
   const sw = Math.max(1, Math.round(rect.width * scale));
   const sh = Math.max(1, Math.round(rect.height * scale));
-  const canvas = new OffscreenCanvas(sw, sh);
+  const maxSide = 1280;
+  const ratio = Math.min(1, maxSide / Math.max(sw, sh));
+  const outW = Math.max(1, Math.round(sw * ratio));
+  const outH = Math.max(1, Math.round(sh * ratio));
+  const canvas = new OffscreenCanvas(outW, outH);
   const ctx = canvas.getContext("2d");
-  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
-  const blob = await canvas.convertToBlob({ type: "image/png" });
-  return await blobToDataUrl(blob);
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, outW, outH);
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.86 });
+  return {
+    dataUrl: await blobToDataUrl(blob),
+    meta: {
+      sourceWidth: sw,
+      sourceHeight: sh,
+      width: outW,
+      height: outH,
+      type: blob.type,
+      bytes: blob.size
+    }
+  };
 }
 
 async function startJob(tab, settings, prompt, input) {
@@ -252,6 +276,8 @@ async function fetchModels() {
 }
 
 async function runJob(jobId, settings, prompt, input, tabId, origin) {
+  const startedAt = Date.now();
+  let requestSummary = null;
   try {
     const history = settings.resumeConversations ? await getConversationMessages(origin) : [];
     const userContent = await buildMessageContent(prompt, input);
@@ -260,6 +286,9 @@ async function runJob(jobId, settings, prompt, input, tabId, origin) {
       ...history,
       { role: "user", content: userContent }
     ];
+
+    requestSummary = summarizeRequest(settings, messages, input, prompt);
+    await logDebug(settings, "request", requestSummary);
 
     const response = await fetch(`${trimSlash(settings.endpoint)}/v1/chat/completions`, {
       method: "POST",
@@ -274,10 +303,30 @@ async function runJob(jobId, settings, prompt, input, tabId, origin) {
       })
     });
 
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error?.message || `HTTP ${response.status}`);
+    const raw = await response.text();
+    const body = parseJson(raw);
+    if (!response.ok) {
+      const details = {
+        status: response.status,
+        statusText: response.statusText,
+        providerCode: body?.error?.code || body?.code || null,
+        providerMessage: body?.error?.message || body?.message || raw.slice(0, 1200),
+        raw: raw.slice(0, 3000),
+        hint: input.imageUrl
+          ? "The selected model/provider rejected the image payload. Try cx/gpt-5.5, reduce snip size, or check whether this model supports vision through 9router."
+          : ""
+      };
+      await logDebug(settings, "error", { ...requestSummary, details, durationMs: Date.now() - startedAt });
+      throw Object.assign(new Error(details.providerMessage || `HTTP ${response.status}`), { details });
+    }
 
     const answer = body.choices?.[0]?.message?.content || "";
+    await logDebug(settings, "response", {
+      ...requestSummary,
+      durationMs: Date.now() - startedAt,
+      usage: body.usage || null,
+      answerChars: answer.length
+    });
     await appendConversation(origin, input.pageUrl, userContent, answer);
     await updateJob(jobId, {
       status: "done",
@@ -285,9 +334,17 @@ async function runJob(jobId, settings, prompt, input, tabId, origin) {
       usage: body.usage || null
     }, tabId);
   } catch (error) {
+    if (!error.details) {
+      await logDebug(settings, "error", {
+        ...(requestSummary || summarizeRequest(settings, [], input, prompt)),
+        durationMs: Date.now() - startedAt,
+        details: { message: error.message }
+      });
+    }
     await updateJob(jobId, {
       status: "error",
-      error: error.message
+      error: error.message,
+      errorDetails: error.details || null
     }, tabId);
   }
 }
@@ -419,6 +476,67 @@ function compact(value) {
 
 function trimSlash(value) {
   return value.replace(/\/+$/, "");
+}
+
+function parseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function summarizeRequest(settings, messages, input, prompt) {
+  return {
+    endpoint: `${trimSlash(settings.endpoint)}/v1/chat/completions`,
+    model: settings.model,
+    promptId: prompt.id,
+    promptTitle: prompt.title,
+    inputKind: input.kind,
+    pageUrl: input.pageUrl || "",
+    imageMeta: input.imageMeta || summarizeImageUrl(input.imageUrl),
+    messageCount: messages.length,
+    messageShape: messages.map((message) => ({
+      role: message.role,
+      content: Array.isArray(message.content)
+        ? message.content.map((part) => part.type)
+        : "text"
+    }))
+  };
+}
+
+function summarizeImageUrl(value = "") {
+  if (!value) return null;
+  const match = value.match(/^data:([^;]+);base64,(.*)$/);
+  if (!match) return { type: "url", chars: value.length };
+  return {
+    type: match[1],
+    bytesApprox: Math.round(match[2].length * 0.75),
+    chars: value.length
+  };
+}
+
+async function logDebug(settings, type, data) {
+  if (!settings.debugEnabled) return;
+  const { debugLogs } = await chrome.storage.local.get("debugLogs");
+  const logs = Array.isArray(debugLogs) ? debugLogs : [];
+  logs.push({
+    id: crypto.randomUUID(),
+    at: Date.now(),
+    type,
+    data
+  });
+  await chrome.storage.local.set({ debugLogs: logs.slice(-80) });
+}
+
+async function getDebugLogs() {
+  const { debugLogs } = await chrome.storage.local.get("debugLogs");
+  return { ok: true, logs: Array.isArray(debugLogs) ? debugLogs : [] };
+}
+
+async function clearDebugLogs() {
+  await chrome.storage.local.set({ debugLogs: [] });
+  return { ok: true };
 }
 
 function clip(value, max) {
