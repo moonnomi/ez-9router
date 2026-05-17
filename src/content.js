@@ -38,15 +38,18 @@ function render() {
     <div class="ez9-card" role="dialog" aria-live="polite">
       <div class="ez9-glow"></div>
       <header class="ez9-head" data-drag-handle>
-        <div>
+        <div class="ez9-title-row">
+          <div class="ez9-spark">9</div>
+          <div>
           <div class="ez9-kicker">ez-9router</div>
           <h2>${escapeHtml(currentJob?.title || "Answer")}</h2>
+          </div>
         </div>
         <button class="ez9-icon" data-action="close" title="Close">x</button>
       </header>
       <div class="ez9-meta">
         <span>${escapeHtml(currentJob?.model || "model")}</span>
-        <span>${renderStatusLabel()}</span>
+        <span class="ez9-status ${escapeHtml(currentJob?.status || "running")}">${renderStatusLabel()}</span>
       </div>
       ${renderBody()}
       ${renderSource()}
@@ -80,7 +83,7 @@ function ensureRoot() {
 }
 
 function positionRoot(root) {
-  const width = Math.min(340, window.innerWidth - 28);
+  const width = Math.min(360, window.innerWidth - 28);
   const left = savedPosition?.left ?? Math.max(14, window.innerWidth - width - 22);
   const top = savedPosition?.top ?? 22;
   root.style.left = `${clamp(left, 14, window.innerWidth - width - 14)}px`;

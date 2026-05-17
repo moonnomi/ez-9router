@@ -8,30 +8,37 @@
   </head>
   <body>
     <main class="shell">
-      <header>
-        <div>
+      <header class="brand">
+        <div class="brand-lockup">
+          <div class="brand-mark">9</div>
+          <div>
           <h1>ez-9router</h1>
           <p>Local context prompts</p>
+          </div>
         </div>
-        <button id="refreshModels" class="icon-btn" title="Refresh models">Refresh</button>
+        <div class="status-pill">Connected</div>
       </header>
 
-      <label>
-        <span>9router URL</span>
-        <input id="endpoint" spellcheck="false">
-      </label>
+      <section class="connection-card">
+        <div class="section-title">Connection</div>
+        <label>
+          <span>9router URL</span>
+          <input id="endpoint" spellcheck="false">
+        </label>
 
-      <label>
-        <span>API key</span>
-        <input id="apiKey" type="password" spellcheck="false">
-      </label>
+        <label>
+          <span>API key</span>
+          <input id="apiKey" type="password" spellcheck="false">
+        </label>
 
-      <label>
-        <span>Model</span>
-        <select id="model"></select>
-      </label>
+        <label>
+          <span>Model</span>
+          <select id="model"></select>
+        </label>
 
-      <button id="testModel" class="wide-btn">Test selected model</button>
+        <button id="testModel" class="wide-btn">Test Connection</button>
+        <button id="refreshModels" class="quiet-btn" title="Refresh models">Refresh models</button>
+      </section>
 
       <section>
         <div class="section-title">Theme</div>

@@ -1,7 +1,7 @@
 #ez9router-root {
   position: fixed;
   z-index: 2147483647;
-  width: min(340px, calc(100vw - 28px));
+  width: min(360px, calc(100vw - 28px));
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ez9-text);
   animation: ez9-pop 180ms cubic-bezier(.2, .8, .2, 1);
@@ -12,25 +12,31 @@
 }
 
 #ez9router-root[data-theme="light"] {
-  --ez9-bg: rgba(255, 252, 249, .96);
-  --ez9-panel: #fff7f1;
-  --ez9-text: #211714;
-  --ez9-muted: #7a6861;
-  --ez9-line: rgba(126, 58, 36, .16);
-  --ez9-accent: #ff4d1f;
-  --ez9-accent-2: #ff7a2f;
-  --ez9-shadow: 0 22px 70px rgba(70, 31, 18, .24);
+  --ez9-bg: rgba(255, 252, 249, .94);
+  --ez9-panel: rgba(255, 247, 240, .78);
+  --ez9-text: #241814;
+  --ez9-muted: #78675f;
+  --ez9-line: rgba(132, 58, 32, .18);
+  --ez9-line-strong: rgba(255, 92, 32, .48);
+  --ez9-accent: #ff4d24;
+  --ez9-accent-2: #ff982f;
+  --ez9-ok: #21c55d;
+  --ez9-warn: #ffae22;
+  --ez9-shadow: 0 22px 70px rgba(89, 36, 16, .22), 0 0 52px rgba(255, 76, 28, .12);
 }
 
 #ez9router-root[data-theme="dark"] {
-  --ez9-bg: rgba(22, 18, 17, .96);
-  --ez9-panel: #241b18;
-  --ez9-text: #fff3ed;
-  --ez9-muted: #c8aaa0;
-  --ez9-line: rgba(255, 126, 71, .18);
-  --ez9-accent: #ff5a2b;
-  --ez9-accent-2: #ff9b45;
-  --ez9-shadow: 0 22px 80px rgba(0, 0, 0, .46);
+  --ez9-bg: rgba(19, 18, 16, .88);
+  --ez9-panel: rgba(31, 29, 25, .74);
+  --ez9-text: #f8f0e8;
+  --ez9-muted: #b9aaa0;
+  --ez9-line: rgba(255, 134, 66, .16);
+  --ez9-line-strong: rgba(255, 103, 36, .58);
+  --ez9-accent: #ff4c25;
+  --ez9-accent-2: #ff9b34;
+  --ez9-ok: #25d366;
+  --ez9-warn: #ffb020;
+  --ez9-shadow: 0 26px 80px rgba(0, 0, 0, .48), 0 0 60px rgba(255, 79, 30, .16);
 }
 
 #ez9router-root * {
@@ -41,17 +47,28 @@
   position: relative;
   overflow: hidden;
   border: 1px solid var(--ez9-line);
-  border-radius: 18px;
-  background: var(--ez9-bg);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 12% 0, rgba(255, 87, 31, .12), transparent 42%),
+    linear-gradient(180deg, var(--ez9-bg), color-mix(in srgb, var(--ez9-bg), #000 12%));
   box-shadow: var(--ez9-shadow);
-  backdrop-filter: blur(18px) saturate(1.25);
+  backdrop-filter: blur(22px) saturate(1.2);
+}
+
+.ez9-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .035);
 }
 
 .ez9-glow {
   position: absolute;
   inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(90deg, var(--ez9-accent), var(--ez9-accent-2));
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--ez9-accent), var(--ez9-accent-2), transparent);
 }
 
 .ez9-head {
@@ -59,7 +76,7 @@
   align-items: start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 14px 7px;
+  padding: 16px 16px 8px;
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -69,36 +86,58 @@
   cursor: grabbing;
 }
 
+.ez9-title-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.ez9-spark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  background: radial-gradient(circle at 35% 25%, var(--ez9-accent-2), var(--ez9-accent));
+  color: #17110d;
+  font-size: 22px;
+  font-weight: 950;
+  box-shadow: 0 10px 26px rgba(255, 79, 30, .28);
+}
+
 .ez9-kicker {
-  color: var(--ez9-accent);
+  color: var(--ez9-accent-2);
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  font-weight: 900;
 }
 
 .ez9-head h2 {
   margin: 3px 0 0;
+  overflow: hidden;
   color: var(--ez9-text);
   font-size: 15px;
-  line-height: 1.2;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ez9-icon,
 .ez9-btn {
   border: 1px solid var(--ez9-line);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ez9-panel), transparent 12%);
+  background: rgba(255, 255, 255, .04);
   color: var(--ez9-text);
   font: inherit;
-  font-weight: 800;
+  font-weight: 850;
   cursor: pointer;
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
 .ez9-icon {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   line-height: 1;
 }
@@ -106,42 +145,63 @@
 .ez9-icon:hover,
 .ez9-btn:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--ez9-accent), var(--ez9-line));
+  border-color: var(--ez9-line-strong);
 }
 
 .ez9-meta {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 0 14px 10px;
+  padding: 0 16px 13px 60px;
 }
 
 .ez9-meta span {
   border: 1px solid var(--ez9-line);
   border-radius: 999px;
-  padding: 4px 8px;
+  padding: 4px 9px;
   color: var(--ez9-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 780;
+}
+
+.ez9-status.done {
+  border-color: rgba(37, 211, 102, .22);
+  background: rgba(37, 211, 102, .11);
+  color: var(--ez9-ok);
+}
+
+.ez9-status.running {
+  border-color: rgba(255, 176, 32, .22);
+  background: rgba(255, 176, 32, .1);
+  color: var(--ez9-warn);
+}
+
+.ez9-status.error {
+  border-color: rgba(255, 76, 37, .32);
+  background: rgba(255, 76, 37, .12);
+  color: var(--ez9-accent);
 }
 
 .ez9-thinking {
   display: grid;
-  grid-template-columns: 10px 10px 10px 1fr;
-  align-items: center;
-  gap: 7px;
-  margin: 0 18px 18px;
-  padding: 13px;
-  border-radius: 14px;
-  background: var(--ez9-panel);
+  place-items: center;
+  gap: 12px;
+  margin: 0 16px 14px;
+  padding: 26px 16px;
+  border: 1px solid var(--ez9-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .035);
 }
 
 .ez9-thinking span {
-  width: 9px;
-  height: 9px;
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin: 0 4px;
   border-radius: 999px;
-  background: var(--ez9-accent);
+  background: linear-gradient(135deg, var(--ez9-accent), var(--ez9-accent-2));
   animation: ez9-pulse 900ms ease-in-out infinite;
+  box-shadow: 0 0 18px rgba(255, 85, 31, .42);
 }
 
 .ez9-thinking span:nth-child(2) {
@@ -153,19 +213,23 @@
 }
 
 .ez9-thinking p {
-  margin: 0 0 0 4px;
-  color: var(--ez9-muted);
-  font-size: 12px;
-  font-weight: 750;
+  margin: 0;
+  color: var(--ez9-text);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .ez9-answer {
   max-height: min(46vh, 420px);
+  margin: 0 16px 10px;
   overflow: auto;
-  padding: 0 14px 4px;
+  border: 1px solid var(--ez9-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .035);
+  padding: 14px;
   color: var(--ez9-text);
-  font-size: 13px;
-  line-height: 1.58;
+  font-size: 14px;
+  line-height: 1.62;
 }
 
 .ez9-answer p {
@@ -185,13 +249,13 @@
 }
 
 .ez9-error {
-  margin: 0 14px 14px;
+  margin: 0 16px 14px;
   padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--ez9-accent), transparent 55%);
-  border-radius: 14px;
+  border: 1px solid rgba(255, 76, 37, .36);
+  border-radius: 16px;
   color: var(--ez9-text);
-  background: color-mix(in srgb, var(--ez9-accent), transparent 88%);
-  font-weight: 750;
+  background: rgba(255, 76, 37, .1);
+  font-weight: 760;
 }
 
 .ez9-error strong {
@@ -213,14 +277,14 @@
 }
 
 .ez9-source {
-  margin: 6px 14px 12px;
+  margin: 6px 16px 12px;
   color: var(--ez9-muted);
   font-size: 12px;
 }
 
 .ez9-source summary {
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .ez9-source pre {
@@ -233,15 +297,22 @@
 
 .ez9-actions {
   display: flex;
-  gap: 8px;
+  gap: 9px;
   justify-content: flex-end;
-  padding: 10px 14px 14px;
+  padding: 8px 16px 16px;
 }
 
 .ez9-btn {
-  padding: 8px 12px;
+  padding: 9px 14px;
   background: linear-gradient(135deg, var(--ez9-accent), var(--ez9-accent-2));
   color: #fff;
+  box-shadow: 0 12px 28px rgba(255, 74, 30, .27);
+}
+
+.ez9-btn.ghost {
+  background: transparent;
+  color: var(--ez9-muted);
+  box-shadow: none;
 }
 
 #ez9router-snip {
@@ -279,11 +350,6 @@
 
 .ez9-snip-box[style*="width"] {
   display: block;
-}
-
-.ez9-btn.ghost {
-  background: transparent;
-  color: var(--ez9-muted);
 }
 
 @keyframes ez9-pop {
