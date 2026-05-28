@@ -36,5 +36,25 @@
   "action": {
     "default_title": "ez-9router",
     "default_popup": "src/popup.html"
+  },
+  "commands": {
+    "ez-answer-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+1"
+      },
+      "description": "Answer selected text"
+    },
+    "ez-snip": {
+      "suggested_key": {
+        "default": "Alt+Shift+2"
+      },
+      "description": "Start snip mode"
+    },
+    "ez-send-html": {
+      "suggested_key": {
+        "default": "Alt+Shift+3"
+      },
+      "description": "Send full page HTML"
+    }
   }
 }

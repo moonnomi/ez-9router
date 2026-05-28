@@ -14,6 +14,15 @@ Chrome-compatible MV3 extension for sending selected text or right-clicked image
 - Opens a Grammarly-style inline answer card with formatted answers and copy support.
 - Supports light, dark, and system themes using a 9router-style orange-red accent.
 
+## Native companion
+
+A lightweight Windows tray app is available under `native/Ez9Router.Native`. It uses WinForms/native hotkeys instead of Electron.
+
+Run it with:
+
+```powershell
+dotnet run --project native/Ez9Router.Native/Ez9Router.Native.csproj
+```
 ## Local Setup
 
 1. Open `chrome://extensions`.

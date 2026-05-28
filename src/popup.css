@@ -325,6 +325,37 @@ textarea:focus {
   box-shadow: 0 0 18px rgba(var(--accent-rgb), .12);
 }
 
+
+.shortcut-list {
+  display: grid;
+  gap: 8px;
+}
+
+.shortcut-list div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .035);
+  padding: 9px 10px;
+}
+
+.shortcut-list span {
+  flex: 1;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.shortcut-list kbd {
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: rgba(var(--accent-rgb), .1);
+  color: var(--text);
+  padding: 3px 6px;
+  font: 800 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
 .prompt-list,
 .conversation-list,
 .debug-list {

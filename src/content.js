@@ -47,6 +47,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     });
   }
 
+
+  if (message?.type === "ez9router:getSelection") {
+    sendResponse({ ok: true, text: window.getSelection()?.toString() || "", url: location.href });
+  }
   if (message?.type === "ez9router:getContextPoint") {
     sendResponse({ ok: true, point: lastContextPoint });
   }

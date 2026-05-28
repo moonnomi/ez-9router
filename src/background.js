@@ -84,6 +84,41 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+
+chrome.commands.onCommand.addListener(async (command) => {
+  const settings = await getSettings();
+  const tab = await getActiveTab();
+  if (!tab?.id) return;
+
+  if (command === "ez-answer-selection") {
+    const selection = await postToTab(tab.id, { type: "ez9router:getSelection" });
+    const prompt = findPrompt(settings, "answer");
+    await startJob(tab, settings, prompt, {
+      text: selection?.text || "",
+      pageUrl: tab.url || "",
+      kind: "selection"
+    });
+    return;
+  }
+
+  if (command === "ez-snip") {
+    await postToTab(tab.id, { type: "ez9router:startSnip", promptMode: "default", stealthMode: settings.stealthMode });
+    return;
+  }
+
+  if (command === "ez-send-html") {
+    const page = await postToTab(tab.id, { type: "ez9router:getHtml" });
+    await startJob(tab, settings, {
+      id: "full-html",
+      title: "Full HTML",
+      prompt: "Analyze the full page HTML. Extract the useful answer or summarize the page structure clearly."
+    }, {
+      text: page?.html || "",
+      pageUrl: tab.url || "",
+      kind: "html"
+    });
+  }
+});
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "fetchModels") {
     fetchModels().then(sendResponse);
@@ -513,6 +548,11 @@ async function getDashboard() {
   };
 }
 
+
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab || null;
+}
 function getOrigin(url) {
   try {
     const parsed = new URL(url);
