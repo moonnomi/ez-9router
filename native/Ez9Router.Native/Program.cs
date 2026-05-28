@@ -49,11 +49,11 @@ sealed class TrayAppContext : ApplicationContext
         {
             if (action == AppAction.Snip)
             {
-                using var overlay = new SnipOverlay();
+                using var overlay = new SnipOverlay2(settings.StealthMode);
                 if (overlay.ShowDialog() != DialogResult.OK || overlay.SnipBitmap == null) return;
                 var snipPrompt = settings.SnipPrompt;
                 var answer = await router.AskImageAsync(snipPrompt, overlay.SnipBitmap);
-                new AnswerWindow(answer).Show();
+                new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip).Show();
                 return;
             }
 
@@ -70,7 +70,7 @@ sealed class TrayAppContext : ApplicationContext
             if (string.IsNullOrWhiteSpace(prompt)) return;
 
             var result = await router.AskTextAsync(prompt!, text);
-            new AnswerWindow(result).Show();
+            new AnswerWindow2(result, settings.StealthMode, false).Show();
         }
         catch (Exception ex)
         {
@@ -80,7 +80,7 @@ sealed class TrayAppContext : ApplicationContext
 
     void OpenSettings()
     {
-        using var form = new SettingsForm(settings);
+        using var form = new SettingsForm2(settings, router);
         if (form.ShowDialog() != DialogResult.OK) return;
         settings.Save();
         hotkeys.RegisterAll();
@@ -111,6 +111,8 @@ sealed class AppSettings
     public string AnswerHotkey { get; set; } = "Ctrl+Alt+1";
     public string SnipHotkey { get; set; } = "Ctrl+Alt+2";
     public string CustomHotkey { get; set; } = "Ctrl+Alt+3";
+    public bool StealthMode { get; set; }
+    public bool SemiStealthSnip { get; set; }
 
     public static AppSettings Load()
     {
@@ -136,6 +138,19 @@ sealed class RouterClient
 
     public RouterClient(AppSettings settings) => this.settings = settings;
 
+
+    public async Task<List<string>> FetchModelsAsync()
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, settings.Endpoint.TrimEnd('/') + "/v1/models");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
+        using var res = await http.SendAsync(req);
+        var raw = await res.Content.ReadAsStringAsync();
+        if (!res.IsSuccessStatusCode) throw new InvalidOperationException(raw);
+        using var doc = JsonDocument.Parse(raw);
+        return doc.RootElement.GetProperty("data").EnumerateArray()
+            .Select(x => x.TryGetProperty("id", out var id) ? id.GetString() : null)
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().ToList();
+    }
     public Task<string> AskTextAsync(string prompt, string text)
     {
         object content = prompt + "\n\nSelected content:\n" + text;
@@ -407,4 +422,227 @@ static class PromptDialog
         form.AcceptButton = ok;
         return form.ShowDialog() == DialogResult.OK ? box.Text : null;
     }
+}
+sealed class AnswerWindow2 : Form
+{
+    readonly bool closeOnHoverX;
+    public AnswerWindow2(string answer, bool stealth, bool persistentStealth)
+    {
+        StartPosition = FormStartPosition.CenterScreen;
+        TopMost = true;
+        Width = stealth ? 430 : 560;
+        Height = stealth ? 220 : 360;
+        KeyPreview = true;
+        closeOnHoverX = stealth && persistentStealth;
+        if (stealth)
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            BackColor = Color.White;
+            ForeColor = Color.Black;
+            Controls.Add(new Label { Dock = DockStyle.Fill, Text = answer, BackColor = Color.White, ForeColor = Color.Black, Font = new Font("Arial", 10.5f), Padding = new Padding(12), AutoEllipsis = true });
+            if (!persistentStealth)
+            {
+                var timer = new System.Windows.Forms.Timer { Interval = 1000 };
+                timer.Tick += (_, _) => { timer.Stop(); Close(); };
+                timer.Start();
+            }
+            return;
+        }
+        Text = "ez-9router";
+        BackColor = Color.FromArgb(18, 17, 15);
+        ForeColor = Color.White;
+        Controls.Add(new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Text = answer, BackColor = Color.FromArgb(25, 23, 20), ForeColor = Color.White, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(12) });
+    }
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (closeOnHoverX && e.KeyCode == Keys.X && ClientRectangle.Contains(PointToClient(Cursor.Position))) Close();
+        base.OnKeyDown(e);
+    }
+}
+
+sealed class SettingsForm2 : Form
+{
+    readonly AppSettings settings;
+    readonly RouterClient router;
+    readonly Dictionary<string, Control> fields = new();
+    readonly Color bg = Color.FromArgb(18, 17, 15);
+    readonly Color panel = Color.FromArgb(31, 29, 25);
+    readonly Color text = Color.FromArgb(248, 240, 232);
+    readonly Color muted = Color.FromArgb(185, 170, 160);
+    readonly Color accent = Color.FromArgb(255, 76, 37);
+
+    public SettingsForm2(AppSettings settings, RouterClient router)
+    {
+        this.settings = settings;
+        this.router = router;
+        Text = "ez-9router settings";
+        Width = 560;
+        Height = 690;
+        StartPosition = FormStartPosition.CenterScreen;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        BackColor = bg;
+        ForeColor = text;
+
+        var root = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(16), FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = bg };
+        Controls.Add(root);
+        root.Controls.Add(new Label { Text = "ez-9router", Font = new Font("Segoe UI", 20, FontStyle.Bold), ForeColor = text, Width = 500, Height = 42 });
+
+        var conn = Card("Connection");
+        AddText(conn, "Endpoint", settings.Endpoint);
+        AddText(conn, "API key", settings.ApiKey, true);
+        AddModel(conn);
+        var refresh = Button("Refresh models");
+        refresh.Click += async (_, _) => await LoadModelsAsync();
+        conn.Controls.Add(refresh);
+        root.Controls.Add(conn);
+
+        var modes = Card("Modes");
+        AddCheck(modes, "Stealth mode", settings.StealthMode);
+        AddCheck(modes, "Semi-stealth snip", settings.SemiStealthSnip);
+        root.Controls.Add(modes);
+
+        var prompts = Card("Prompts");
+        AddText(prompts, "Answer prompt", settings.AnswerPrompt, false, 64);
+        AddText(prompts, "Snip prompt", settings.SnipPrompt, false, 64);
+        root.Controls.Add(prompts);
+
+        var keys = Card("Hotkeys");
+        AddHotkey(keys, "Answer hotkey", settings.AnswerHotkey);
+        AddHotkey(keys, "Snip hotkey", settings.SnipHotkey);
+        AddHotkey(keys, "Custom hotkey", settings.CustomHotkey);
+        root.Controls.Add(keys);
+
+        var save = Button("Save");
+        save.Width = 500;
+        save.Height = 38;
+        save.Click += (_, _) => SaveAndClose();
+        root.Controls.Add(save);
+        Shown += async (_, _) => await LoadModelsAsync();
+    }
+
+    FlowLayoutPanel Card(string title)
+    {
+        var card = new FlowLayoutPanel { Width = 500, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = panel, Padding = new Padding(12), Margin = new Padding(0, 8, 0, 8) };
+        card.Controls.Add(new Label { Text = title, Width = 460, Height = 24, ForeColor = text, Font = new Font("Segoe UI", 10.5f, FontStyle.Bold) });
+        return card;
+    }
+
+    void AddText(FlowLayoutPanel card, string label, string value, bool password = false, int height = 32)
+    {
+        card.Controls.Add(new Label { Text = label, Width = 460, Height = 18, ForeColor = muted });
+        var box = new TextBox { Text = value, Width = 460, Height = height, UseSystemPasswordChar = password, BackColor = Color.FromArgb(20, 19, 17), ForeColor = text, BorderStyle = BorderStyle.FixedSingle, Multiline = height > 40 };
+        fields[label] = box;
+        card.Controls.Add(box);
+    }
+
+    void AddModel(FlowLayoutPanel card)
+    {
+        card.Controls.Add(new Label { Text = "Model", Width = 460, Height = 18, ForeColor = muted });
+        var combo = new ComboBox { Width = 460, DropDownStyle = ComboBoxStyle.DropDown, BackColor = Color.FromArgb(20, 19, 17), ForeColor = text };
+        combo.Items.Add(settings.Model);
+        combo.Text = settings.Model;
+        fields["Model"] = combo;
+        card.Controls.Add(combo);
+    }
+
+    void AddCheck(FlowLayoutPanel card, string label, bool value)
+    {
+        var cb = new CheckBox { Text = label, Checked = value, Width = 460, Height = 28, ForeColor = text, BackColor = panel };
+        fields[label] = cb;
+        card.Controls.Add(cb);
+    }
+
+    void AddHotkey(FlowLayoutPanel card, string label, string value)
+    {
+        card.Controls.Add(new Label { Text = label, Width = 460, Height = 18, ForeColor = muted });
+        var box = new HotkeyBox { Text = value, Width = 460, Height = 32, BackColor = Color.FromArgb(20, 19, 17), ForeColor = text, BorderStyle = BorderStyle.FixedSingle, ReadOnly = true };
+        fields[label] = box;
+        card.Controls.Add(box);
+    }
+
+    Button Button(string label) => new() { Text = label, Width = 460, Height = 34, BackColor = accent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+
+    async Task LoadModelsAsync()
+    {
+        if (fields["Model"] is not ComboBox combo) return;
+        try
+        {
+            var selected = combo.Text;
+            combo.Items.Clear();
+            foreach (var item in await router.FetchModelsAsync()) combo.Items.Add(item);
+            combo.Text = selected;
+        }
+        catch { }
+    }
+
+    void SaveAndClose()
+    {
+        settings.Endpoint = ((TextBox)fields["Endpoint"]).Text.Trim();
+        settings.ApiKey = ((TextBox)fields["API key"]).Text.Trim();
+        settings.Model = ((ComboBox)fields["Model"]).Text.Trim();
+        settings.AnswerPrompt = ((TextBox)fields["Answer prompt"]).Text.Trim();
+        settings.SnipPrompt = ((TextBox)fields["Snip prompt"]).Text.Trim();
+        settings.AnswerHotkey = ((TextBox)fields["Answer hotkey"]).Text.Trim();
+        settings.SnipHotkey = ((TextBox)fields["Snip hotkey"]).Text.Trim();
+        settings.CustomHotkey = ((TextBox)fields["Custom hotkey"]).Text.Trim();
+        settings.StealthMode = ((CheckBox)fields["Stealth mode"]).Checked;
+        settings.SemiStealthSnip = ((CheckBox)fields["Semi-stealth snip"]).Checked;
+        DialogResult = DialogResult.OK;
+        Close();
+    }
+}
+
+sealed class HotkeyBox : TextBox
+{
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        var key = keyData & Keys.KeyCode;
+        if (key is Keys.ControlKey or Keys.Menu or Keys.ShiftKey) return true;
+        var parts = new List<string>();
+        if (keyData.HasFlag(Keys.Control)) parts.Add("Ctrl");
+        if (keyData.HasFlag(Keys.Alt)) parts.Add("Alt");
+        if (keyData.HasFlag(Keys.Shift)) parts.Add("Shift");
+        parts.Add(key.ToString().Replace("D", ""));
+        Text = string.Join("+", parts);
+        return true;
+    }
+}
+
+sealed class SnipOverlay2 : Form
+{
+    readonly bool quiet;
+    Point start;
+    Rectangle rect;
+    public Bitmap? SnipBitmap { get; private set; }
+    public SnipOverlay2(bool stealth)
+    {
+        quiet = stealth;
+        FormBorderStyle = FormBorderStyle.None;
+        WindowState = FormWindowState.Maximized;
+        TopMost = true;
+        Opacity = stealth ? .01 : .22;
+        BackColor = stealth ? Color.White : Color.Black;
+        TransparencyKey = stealth ? Color.White : Color.Empty;
+        Cursor = Cursors.Cross;
+        DoubleBuffered = true;
+    }
+    protected override void OnMouseDown(MouseEventArgs e) { start = e.Location; rect = new Rectangle(e.Location, Size.Empty); }
+    protected override void OnMouseMove(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { rect = Normalize(start, e.Location); Invalidate(); } }
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        rect = Normalize(start, e.Location);
+        if (rect.Width < 8 || rect.Height < 8) { DialogResult = DialogResult.Cancel; Close(); return; }
+        Hide();
+        Thread.Sleep(80);
+        SnipBitmap = new Bitmap(rect.Width, rect.Height);
+        using var g = Graphics.FromImage(SnipBitmap);
+        g.CopyFromScreen(PointToScreen(rect.Location), Point.Empty, rect.Size);
+        DialogResult = DialogResult.OK;
+        Close();
+    }
+    protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } }
+    protected override void OnPaint(PaintEventArgs e) { using var pen = new Pen(quiet ? Color.Red : Color.OrangeRed, quiet ? 1 : 2); e.Graphics.DrawRectangle(pen, rect); }
+    static Rectangle Normalize(Point a, Point b) => new(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
 }
