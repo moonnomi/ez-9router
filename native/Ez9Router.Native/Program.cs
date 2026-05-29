@@ -212,6 +212,7 @@ sealed class AnswerWindow : Form
     {
         Text = "ez-9router";
         StartPosition = FormStartPosition.CenterScreen;
+        ShowInTaskbar = false;
         Width = 560;
         Height = 360;
         TopMost = true;
@@ -389,7 +390,10 @@ static class Hotkey
             else if (part == "SHIFT") mods |= 0x0004;
             else if (part == "WIN") mods |= 0x0008;
             else if (part.Length == 1) key = part[0];
+            else if (part == "ESC") key = (uint)Keys.Escape;
+            else if (part.StartsWith("NUM") && int.TryParse(part[3..], out var n) && n is >= 0 and <= 9) key = (uint)(Keys.NumPad0 + n);
             else if (part.StartsWith('F') && int.TryParse(part[1..], out var f) && f is >= 1 and <= 24) key = (uint)(0x70 + f - 1);
+            else if (Enum.TryParse<Keys>(part, true, out var parsed)) key = (uint)parsed;
         }
         return key != 0;
     }
@@ -428,7 +432,8 @@ sealed class AnswerWindow2 : Form
     readonly bool closeOnHoverX;
     public AnswerWindow2(string answer, bool stealth, bool persistentStealth)
     {
-        StartPosition = FormStartPosition.CenterScreen;
+        StartPosition = stealth ? FormStartPosition.Manual : FormStartPosition.CenterScreen;
+        ShowInTaskbar = false;
         TopMost = true;
         Width = stealth ? 430 : 560;
         Height = stealth ? 220 : 360;
@@ -436,6 +441,8 @@ sealed class AnswerWindow2 : Form
         closeOnHoverX = stealth && persistentStealth;
         if (stealth)
         {
+            var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+            Location = ClampNearCursor(area, new Size(Width, Height));
             FormBorderStyle = FormBorderStyle.None;
             BackColor = Color.White;
             ForeColor = Color.Black;
@@ -457,6 +464,13 @@ sealed class AnswerWindow2 : Form
     {
         if (closeOnHoverX && e.KeyCode == Keys.X && ClientRectangle.Contains(PointToClient(Cursor.Position))) Close();
         base.OnKeyDown(e);
+    }
+
+    static Point ClampNearCursor(Rectangle area, Size size)
+    {
+        var x = Math.Min(Cursor.Position.X + 14, area.Right - size.Width);
+        var y = Math.Min(Cursor.Position.Y + 14, area.Bottom - size.Height);
+        return new Point(Math.Max(area.Left, x), Math.Max(area.Top, y));
     }
 }
 
@@ -604,9 +618,22 @@ sealed class HotkeyBox : TextBox
         if (keyData.HasFlag(Keys.Control)) parts.Add("Ctrl");
         if (keyData.HasFlag(Keys.Alt)) parts.Add("Alt");
         if (keyData.HasFlag(Keys.Shift)) parts.Add("Shift");
-        parts.Add(key.ToString().Replace("D", ""));
+        parts.Add(FormatKey(key));
         Text = string.Join("+", parts);
         return true;
+    }
+
+    static string FormatKey(Keys key)
+    {
+        if (key is >= Keys.D0 and <= Keys.D9) return ((int)(key - Keys.D0)).ToString();
+        if (key is >= Keys.NumPad0 and <= Keys.NumPad9) return "Num" + (int)(key - Keys.NumPad0);
+        return key switch
+        {
+            Keys.Space => "Space",
+            Keys.Return => "Enter",
+            Keys.Escape => "Esc",
+            _ => key.ToString()
+        };
     }
 }
 
@@ -619,12 +646,14 @@ sealed class SnipOverlay2 : Form
     public SnipOverlay2(bool stealth)
     {
         quiet = stealth;
+        StartPosition = FormStartPosition.Manual;
+        Bounds = SystemInformation.VirtualScreen;
+        ShowInTaskbar = false;
         FormBorderStyle = FormBorderStyle.None;
-        WindowState = FormWindowState.Maximized;
         TopMost = true;
-        Opacity = stealth ? .01 : .22;
-        BackColor = stealth ? Color.White : Color.Black;
-        TransparencyKey = stealth ? Color.White : Color.Empty;
+        Opacity = stealth ? .85 : .22;
+        BackColor = stealth ? Color.Magenta : Color.Black;
+        TransparencyKey = stealth ? Color.Magenta : Color.Empty;
         Cursor = Cursors.Cross;
         DoubleBuffered = true;
     }
@@ -644,5 +673,15 @@ sealed class SnipOverlay2 : Form
     }
     protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } }
     protected override void OnPaint(PaintEventArgs e) { using var pen = new Pen(quiet ? Color.Red : Color.OrangeRed, quiet ? 1 : 2); e.Graphics.DrawRectangle(pen, rect); }
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            const int wsExToolWindow = 0x00000080;
+            var cp = base.CreateParams;
+            cp.ExStyle |= wsExToolWindow;
+            return cp;
+        }
+    }
     static Rectangle Normalize(Point a, Point b) => new(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
 }
