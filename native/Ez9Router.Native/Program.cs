@@ -37,6 +37,7 @@ sealed class TrayAppContext : ApplicationContext
         menu.Items.Add("Answer selected text", null, async (_, _) => await RunAction(AppAction.AnswerSelection));
         menu.Items.Add("Snip mode", null, async (_, _) => await RunAction(AppAction.Snip));
         menu.Items.Add("Custom prompt for selection", null, async (_, _) => await RunAction(AppAction.CustomPrompt));
+        menu.Items.Add("Toggle semi-stealth", null, async (_, _) => await RunAction(AppAction.ToggleSemiStealth));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Settings", null, (_, _) => OpenSettings());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
@@ -47,13 +48,21 @@ sealed class TrayAppContext : ApplicationContext
     {
         try
         {
+            if (action == AppAction.ToggleSemiStealth)
+            {
+                settings.SemiStealthSnip = !settings.SemiStealthSnip;
+                settings.Save();
+                ToggleToast.Show(settings.SemiStealthSnip);
+                return;
+            }
+
             if (action == AppAction.Snip)
             {
-                using var overlay = new SnipOverlay2(settings.StealthMode);
+                using var overlay = new SnipOverlay2(settings.StealthMode, settings.SnipOutlineColorValue);
                 if (overlay.ShowDialog() != DialogResult.OK || overlay.SnipBitmap == null) return;
                 var snipPrompt = settings.SnipPrompt;
                 var answer = await router.AskImageAsync(snipPrompt, overlay.SnipBitmap);
-                new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip).Show();
+                new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip, overlay.SnipScreenRect).Show();
                 return;
             }
 
@@ -96,7 +105,7 @@ sealed class TrayAppContext : ApplicationContext
     }
 }
 
-enum AppAction { AnswerSelection = 1, Snip = 2, CustomPrompt = 3 }
+enum AppAction { AnswerSelection = 1, Snip = 2, CustomPrompt = 3, ToggleSemiStealth = 4 }
 
 sealed class AppSettings
 {
@@ -111,9 +120,20 @@ sealed class AppSettings
     public string AnswerHotkey { get; set; } = "Ctrl+Alt+1";
     public string SnipHotkey { get; set; } = "Ctrl+Alt+2";
     public string CustomHotkey { get; set; } = "Ctrl+Alt+3";
+    public string SemiStealthHotkey { get; set; } = "Ctrl+Alt+4";
+    public string SnipOutlineColor { get; set; } = "#ff2b2b";
     public bool StealthMode { get; set; }
     public bool SemiStealthSnip { get; set; }
 
+    [JsonIgnore]
+    public Color SnipOutlineColorValue
+    {
+        get
+        {
+            try { return ColorTranslator.FromHtml(SnipOutlineColor); }
+            catch { return Color.FromArgb(255, 43, 43); }
+        }
+    }
     public static AppSettings Load()
     {
         try
@@ -351,6 +371,7 @@ sealed class HotkeySink : NativeWindow, IDisposable
         Register(1, settings.AnswerHotkey, AppAction.AnswerSelection);
         Register(2, settings.SnipHotkey, AppAction.Snip);
         Register(3, settings.CustomHotkey, AppAction.CustomPrompt);
+        Register(4, settings.SemiStealthHotkey, AppAction.ToggleSemiStealth);
     }
 
     void Register(int id, string chord, AppAction action)
@@ -430,7 +451,7 @@ static class PromptDialog
 sealed class AnswerWindow2 : Form
 {
     readonly bool closeOnHoverX;
-    public AnswerWindow2(string answer, bool stealth, bool persistentStealth)
+    public AnswerWindow2(string answer, bool stealth, bool persistentStealth, Rectangle? anchor = null)
     {
         StartPosition = stealth ? FormStartPosition.Manual : FormStartPosition.CenterScreen;
         ShowInTaskbar = false;
@@ -441,8 +462,8 @@ sealed class AnswerWindow2 : Form
         closeOnHoverX = stealth && persistentStealth;
         if (stealth)
         {
-            var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-            Location = ClampNearCursor(area, new Size(Width, Height));
+            var area = anchor.HasValue ? Screen.FromRectangle(anchor.Value).WorkingArea : Screen.FromPoint(Cursor.Position).WorkingArea;
+            Location = anchor.HasValue ? ClampNearRect(area, anchor.Value, new Size(Width, Height)) : ClampNearCursor(area, new Size(Width, Height));
             FormBorderStyle = FormBorderStyle.None;
             BackColor = Color.White;
             ForeColor = Color.Black;
@@ -470,6 +491,15 @@ sealed class AnswerWindow2 : Form
     {
         var x = Math.Min(Cursor.Position.X + 14, area.Right - size.Width);
         var y = Math.Min(Cursor.Position.Y + 14, area.Bottom - size.Height);
+        return new Point(Math.Max(area.Left, x), Math.Max(area.Top, y));
+    }
+
+    static Point ClampNearRect(Rectangle area, Rectangle anchor, Size size)
+    {
+        var rightX = anchor.Right + 12;
+        var leftX = anchor.Left - size.Width - 12;
+        var x = rightX + size.Width <= area.Right ? rightX : leftX;
+        var y = Math.Min(anchor.Top, area.Bottom - size.Height);
         return new Point(Math.Max(area.Left, x), Math.Max(area.Top, y));
     }
 }
@@ -520,12 +550,14 @@ sealed class SettingsForm2 : Form
         var prompts = Card("Prompts");
         AddText(prompts, "Answer prompt", settings.AnswerPrompt, false, 64);
         AddText(prompts, "Snip prompt", settings.SnipPrompt, false, 64);
+        AddText(prompts, "Snip outline color", settings.SnipOutlineColor);
         root.Controls.Add(prompts);
 
         var keys = Card("Hotkeys");
         AddHotkey(keys, "Answer hotkey", settings.AnswerHotkey);
         AddHotkey(keys, "Snip hotkey", settings.SnipHotkey);
         AddHotkey(keys, "Custom hotkey", settings.CustomHotkey);
+        AddHotkey(keys, "Semi-stealth toggle", settings.SemiStealthHotkey);
         root.Controls.Add(keys);
 
         var save = Button("Save");
@@ -598,9 +630,11 @@ sealed class SettingsForm2 : Form
         settings.Model = ((ComboBox)fields["Model"]).Text.Trim();
         settings.AnswerPrompt = ((TextBox)fields["Answer prompt"]).Text.Trim();
         settings.SnipPrompt = ((TextBox)fields["Snip prompt"]).Text.Trim();
+        settings.SnipOutlineColor = ((TextBox)fields["Snip outline color"]).Text.Trim();
         settings.AnswerHotkey = ((TextBox)fields["Answer hotkey"]).Text.Trim();
         settings.SnipHotkey = ((TextBox)fields["Snip hotkey"]).Text.Trim();
         settings.CustomHotkey = ((TextBox)fields["Custom hotkey"]).Text.Trim();
+        settings.SemiStealthHotkey = ((TextBox)fields["Semi-stealth toggle"]).Text.Trim();
         settings.StealthMode = ((CheckBox)fields["Stealth mode"]).Checked;
         settings.SemiStealthSnip = ((CheckBox)fields["Semi-stealth snip"]).Checked;
         DialogResult = DialogResult.OK;
@@ -641,13 +675,16 @@ sealed class SnipOverlay2 : Form
 {
     readonly bool quiet;
     readonly SnipGuideWindow? guide;
+    readonly Color outline;
     Point start;
     Rectangle rect;
     public Bitmap? SnipBitmap { get; private set; }
-    public SnipOverlay2(bool stealth)
+    public Rectangle SnipScreenRect { get; private set; }
+    public SnipOverlay2(bool stealth, Color outlineColor)
     {
         quiet = stealth;
-        if (quiet) guide = new SnipGuideWindow();
+        outline = outlineColor;
+        if (quiet) guide = new SnipGuideWindow(outlineColor);
         StartPosition = FormStartPosition.Manual;
         Bounds = SystemInformation.VirtualScreen;
         ShowInTaskbar = false;
@@ -679,6 +716,7 @@ sealed class SnipOverlay2 : Form
     {
         rect = Normalize(start, e.Location);
         if (rect.Width < 8 || rect.Height < 8) { DialogResult = DialogResult.Cancel; Close(); return; }
+        SnipScreenRect = ToScreen(rect);
         guide?.Hide();
         Hide();
         Thread.Sleep(80);
@@ -690,7 +728,7 @@ sealed class SnipOverlay2 : Form
     }
     protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } }
     protected override void OnFormClosed(FormClosedEventArgs e) { guide?.Dispose(); base.OnFormClosed(e); }
-    protected override void OnPaint(PaintEventArgs e) { using var pen = new Pen(quiet ? Color.Red : Color.OrangeRed, quiet ? 1 : 2); e.Graphics.DrawRectangle(pen, rect); }
+    protected override void OnPaint(PaintEventArgs e) { using var pen = new Pen(quiet ? outline : Color.OrangeRed, quiet ? 1 : 2); e.Graphics.DrawRectangle(pen, rect); }
     protected override CreateParams CreateParams
     {
         get
@@ -705,15 +743,56 @@ sealed class SnipOverlay2 : Form
     static Rectangle Normalize(Point a, Point b) => new(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
 }
 
-sealed class SnipGuideWindow : Form
+sealed class ToggleToast : Form
 {
-    public SnipGuideWindow()
+    public static void Show(bool value)
+    {
+        var toast = new ToggleToast(value);
+        toast.Show();
+    }
+
+    ToggleToast(bool value)
     {
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         FormBorderStyle = FormBorderStyle.None;
         TopMost = true;
+        Width = 96;
+        Height = 42;
         BackColor = Color.White;
+        ForeColor = Color.Black;
+        var area = Screen.PrimaryScreen?.WorkingArea ?? SystemInformation.WorkingArea;
+        Location = new Point(area.Right - Width - 18, area.Bottom - Height - 18);
+        Controls.Add(new Label { Dock = DockStyle.Fill, Text = value ? "true" : "false", TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Arial", 12, FontStyle.Bold), BackColor = Color.White, ForeColor = Color.Black });
+        var timer = new System.Windows.Forms.Timer { Interval = 1000 };
+        timer.Tick += (_, _) => { timer.Stop(); Close(); Dispose(); };
+        timer.Start();
+    }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            const int wsExToolWindow = 0x00000080;
+            const int wsExNoActivate = 0x08000000;
+            var cp = base.CreateParams;
+            cp.ExStyle |= wsExToolWindow | wsExNoActivate;
+            return cp;
+        }
+    }
+}
+sealed class SnipGuideWindow : Form
+{
+    readonly Color outline;
+    public SnipGuideWindow(Color outlineColor)
+    {
+        outline = outlineColor;
+        StartPosition = FormStartPosition.Manual;
+        ShowInTaskbar = false;
+        FormBorderStyle = FormBorderStyle.None;
+        TopMost = true;
+        BackColor = Color.Magenta;
+        TransparencyKey = Color.Magenta;
         Size = new Size(18, 18);
         DoubleBuffered = true;
     }
@@ -736,7 +815,7 @@ sealed class SnipGuideWindow : Form
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        using var pen = new Pen(Color.Red, 2);
+        using var pen = new Pen(outline, 2);
         e.Graphics.DrawRectangle(pen, 1, 1, Width - 3, Height - 3);
     }
 
