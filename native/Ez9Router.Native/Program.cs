@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Linq;
 using System.Windows.Forms;
 
 ApplicationConfiguration.Initialize();
@@ -64,7 +65,7 @@ sealed class TrayAppContext : ApplicationContext
 
             if (command.Action == AppAction.Snip)
             {
-                using var overlay = new SnipOverlay2(settings.StealthMode, settings.SnipOutlineColorValue);
+                using var overlay = new SnipOverlay2(settings.StealthMode, settings.SnipOutlineColorValue, settings.SnipCancelKeyValue);
                 if (overlay.ShowDialog() != DialogResult.OK || overlay.SnipBitmap == null) return;
                 var snipPrompt = settings.GetSnipPrompts()[Math.Clamp(command.SnipIndex, 0, settings.GetSnipPrompts().Count - 1)].Prompt;
                 var answer = await router.AskImageAsync(snipPrompt, overlay.SnipBitmap);
@@ -138,9 +139,13 @@ sealed class AppSettings
     public List<SnipPromptConfig> SnipPrompts { get; set; } = new();
     public string CustomHotkey { get; set; } = "Ctrl+Alt+3";
     public string SemiStealthHotkey { get; set; } = "Ctrl+Alt+4";
+    public string SnipCancelKey { get; set; } = "Esc";
     public string SnipOutlineColor { get; set; } = "#ff2b2b";
     public bool StealthMode { get; set; }
     public bool SemiStealthSnip { get; set; }
+
+    [JsonIgnore]
+    public Keys SnipCancelKeyValue => Hotkey.ParseKey(SnipCancelKey, out var key) ? key : Keys.Escape;
 
     [JsonIgnore]
     public Color SnipOutlineColorValue
@@ -448,6 +453,19 @@ sealed class HotkeySink : NativeWindow, IDisposable
 
 static class Hotkey
 {
+    public static bool ParseKey(string text, out Keys key)
+    {
+        key = Keys.None;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var part = text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault()?.ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(part)) return false;
+        if (part.Length == 1) { key = (Keys)part[0]; return true; }
+        if (part == "ESC") { key = Keys.Escape; return true; }
+        if (part.StartsWith("NUM") && int.TryParse(part[3..], out var n) && n is >= 0 and <= 9) { key = Keys.NumPad0 + n; return true; }
+        if (part.StartsWith('F') && int.TryParse(part[1..], out var f) && f is >= 1 and <= 24) { key = Keys.F1 + f - 1; return true; }
+        return Enum.TryParse(part, true, out key);
+    }
+
     public static bool Parse(string text, out uint mods, out uint key)
     {
         mods = 0; key = 0;
@@ -614,6 +632,7 @@ sealed class SettingsForm2 : Form
         AddHotkey(keys, "Answer hotkey", settings.AnswerHotkey);
         AddHotkey(keys, "Custom hotkey", settings.CustomHotkey);
         AddHotkey(keys, "Semi-stealth toggle", settings.SemiStealthHotkey);
+        AddHotkey(keys, "Snip cancel key", settings.SnipCancelKey);
         root.Controls.Add(keys);
 
         var save = Button("Save");
@@ -709,6 +728,7 @@ sealed class SettingsForm2 : Form
         settings.AnswerHotkey = ((TextBox)fields["Answer hotkey"]).Text.Trim();
         settings.CustomHotkey = ((TextBox)fields["Custom hotkey"]).Text.Trim();
         settings.SemiStealthHotkey = ((TextBox)fields["Semi-stealth toggle"]).Text.Trim();
+        settings.SnipCancelKey = ((TextBox)fields["Snip cancel key"]).Text.Trim();
         settings.StealthMode = ((CheckBox)fields["Stealth mode"]).Checked;
         settings.SemiStealthSnip = ((CheckBox)fields["Semi-stealth snip"]).Checked;
         DialogResult = DialogResult.OK;
@@ -754,10 +774,12 @@ sealed class SnipOverlay2 : Form
     Rectangle rect;
     public Bitmap? SnipBitmap { get; private set; }
     public Rectangle SnipScreenRect { get; private set; }
-    public SnipOverlay2(bool stealth, Color outlineColor)
+    readonly Keys cancelKey;
+    public SnipOverlay2(bool stealth, Color outlineColor, Keys cancelKey)
     {
         quiet = stealth;
         outline = outlineColor;
+        this.cancelKey = cancelKey;
         if (quiet) guide = new SnipGuideWindow(outlineColor);
         StartPosition = FormStartPosition.Manual;
         Bounds = SystemInformation.VirtualScreen;
@@ -800,7 +822,8 @@ sealed class SnipOverlay2 : Form
         DialogResult = DialogResult.OK;
         Close();
     }
-    protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } }
+    protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == cancelKey) Cancel(); }
+    void Cancel() { DialogResult = DialogResult.Cancel; Close(); }
     protected override void OnFormClosed(FormClosedEventArgs e) { guide?.Dispose(); base.OnFormClosed(e); }
     protected override void OnPaint(PaintEventArgs e) { using var pen = new Pen(quiet ? outline : Color.OrangeRed, quiet ? 1 : 2); e.Graphics.DrawRectangle(pen, rect); }
     protected override CreateParams CreateParams
