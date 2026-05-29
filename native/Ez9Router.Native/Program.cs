@@ -640,29 +640,46 @@ sealed class HotkeyBox : TextBox
 sealed class SnipOverlay2 : Form
 {
     readonly bool quiet;
+    readonly SnipGuideWindow? guide;
     Point start;
     Rectangle rect;
     public Bitmap? SnipBitmap { get; private set; }
     public SnipOverlay2(bool stealth)
     {
         quiet = stealth;
+        if (quiet) guide = new SnipGuideWindow();
         StartPosition = FormStartPosition.Manual;
         Bounds = SystemInformation.VirtualScreen;
         ShowInTaskbar = false;
         FormBorderStyle = FormBorderStyle.None;
         TopMost = true;
-        Opacity = stealth ? .85 : .22;
-        BackColor = stealth ? Color.Magenta : Color.Black;
-        TransparencyKey = stealth ? Color.Magenta : Color.Empty;
+        Opacity = stealth ? .01 : .22;
+        BackColor = Color.Black;
+        TransparencyKey = Color.Empty;
         Cursor = Cursors.Cross;
         DoubleBuffered = true;
     }
-    protected override void OnMouseDown(MouseEventArgs e) { start = e.Location; rect = new Rectangle(e.Location, Size.Empty); }
-    protected override void OnMouseMove(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { rect = Normalize(start, e.Location); Invalidate(); } }
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        start = e.Location;
+        rect = new Rectangle(e.Location, Size.Empty);
+        if (quiet) guide?.ShowAt(PointToScreen(e.Location));
+    }
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        if (quiet && e.Button != MouseButtons.Left) guide?.ShowAt(PointToScreen(e.Location));
+        if (e.Button == MouseButtons.Left)
+        {
+            rect = Normalize(start, e.Location);
+            if (quiet) guide?.ShowRect(ToScreen(rect));
+            Invalidate();
+        }
+    }
     protected override void OnMouseUp(MouseEventArgs e)
     {
         rect = Normalize(start, e.Location);
         if (rect.Width < 8 || rect.Height < 8) { DialogResult = DialogResult.Cancel; Close(); return; }
+        guide?.Hide();
         Hide();
         Thread.Sleep(80);
         SnipBitmap = new Bitmap(rect.Width, rect.Height);
@@ -672,6 +689,7 @@ sealed class SnipOverlay2 : Form
         Close();
     }
     protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } }
+    protected override void OnFormClosed(FormClosedEventArgs e) { guide?.Dispose(); base.OnFormClosed(e); }
     protected override void OnPaint(PaintEventArgs e) { using var pen = new Pen(quiet ? Color.Red : Color.OrangeRed, quiet ? 1 : 2); e.Graphics.DrawRectangle(pen, rect); }
     protected override CreateParams CreateParams
     {
@@ -683,5 +701,54 @@ sealed class SnipOverlay2 : Form
             return cp;
         }
     }
+    Rectangle ToScreen(Rectangle value) => new(PointToScreen(value.Location), value.Size);
     static Rectangle Normalize(Point a, Point b) => new(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
+}
+
+sealed class SnipGuideWindow : Form
+{
+    public SnipGuideWindow()
+    {
+        StartPosition = FormStartPosition.Manual;
+        ShowInTaskbar = false;
+        FormBorderStyle = FormBorderStyle.None;
+        TopMost = true;
+        BackColor = Color.White;
+        Size = new Size(18, 18);
+        DoubleBuffered = true;
+    }
+
+    public void ShowAt(Point cursor)
+    {
+        Bounds = new Rectangle(cursor.X + 12, cursor.Y + 12, 18, 18);
+        if (!Visible) Show();
+        Invalidate();
+    }
+
+    public void ShowRect(Rectangle rect)
+    {
+        Bounds = rect.Width < 8 || rect.Height < 8
+            ? new Rectangle(Cursor.Position.X + 12, Cursor.Position.Y + 12, 18, 18)
+            : rect;
+        if (!Visible) Show();
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        using var pen = new Pen(Color.Red, 2);
+        e.Graphics.DrawRectangle(pen, 1, 1, Width - 3, Height - 3);
+    }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            const int wsExToolWindow = 0x00000080;
+            const int wsExNoActivate = 0x08000000;
+            var cp = base.CreateParams;
+            cp.ExStyle |= wsExToolWindow | wsExNoActivate;
+            return cp;
+        }
+    }
 }
