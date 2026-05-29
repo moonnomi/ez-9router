@@ -34,21 +34,27 @@ sealed class TrayAppContext : ApplicationContext
     ContextMenuStrip BuildMenu()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Answer selected text", null, async (_, _) => await RunAction(AppAction.AnswerSelection));
-        menu.Items.Add("Snip mode", null, async (_, _) => await RunAction(AppAction.Snip));
-        menu.Items.Add("Custom prompt for selection", null, async (_, _) => await RunAction(AppAction.CustomPrompt));
-        menu.Items.Add("Toggle semi-stealth", null, async (_, _) => await RunAction(AppAction.ToggleSemiStealth));
+        menu.Items.Add("Answer selected text", null, async (_, _) => await RunAction(new AppCommand(AppAction.AnswerSelection)));
+        var snipPrompts = settings.GetSnipPrompts();
+        for (var i = 0; i < snipPrompts.Count; i++)
+        {
+            var index = i;
+            var title = string.IsNullOrWhiteSpace(snipPrompts[i].Title) ? $"Snip prompt {i + 1}" : snipPrompts[i].Title;
+            menu.Items.Add(title, null, async (_, _) => await RunAction(new AppCommand(AppAction.Snip, index)));
+        }
+        menu.Items.Add("Custom prompt for selection", null, async (_, _) => await RunAction(new AppCommand(AppAction.CustomPrompt)));
+        menu.Items.Add("Toggle semi-stealth", null, async (_, _) => await RunAction(new AppCommand(AppAction.ToggleSemiStealth)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Settings", null, (_, _) => OpenSettings());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
         return menu;
     }
 
-    async Task RunAction(AppAction action)
+    async Task RunAction(AppCommand command)
     {
         try
         {
-            if (action == AppAction.ToggleSemiStealth)
+            if (command.Action == AppAction.ToggleSemiStealth)
             {
                 settings.SemiStealthSnip = !settings.SemiStealthSnip;
                 settings.Save();
@@ -56,11 +62,11 @@ sealed class TrayAppContext : ApplicationContext
                 return;
             }
 
-            if (action == AppAction.Snip)
+            if (command.Action == AppAction.Snip)
             {
                 using var overlay = new SnipOverlay2(settings.StealthMode, settings.SnipOutlineColorValue);
                 if (overlay.ShowDialog() != DialogResult.OK || overlay.SnipBitmap == null) return;
-                var snipPrompt = settings.SnipPrompt;
+                var snipPrompt = settings.GetSnipPrompts()[Math.Clamp(command.SnipIndex, 0, settings.GetSnipPrompts().Count - 1)].Prompt;
                 var answer = await router.AskImageAsync(snipPrompt, overlay.SnipBitmap);
                 new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip, overlay.SnipScreenRect).Show();
                 return;
@@ -73,7 +79,7 @@ sealed class TrayAppContext : ApplicationContext
                 return;
             }
 
-            var prompt = action == AppAction.CustomPrompt
+            var prompt = command.Action == AppAction.CustomPrompt
                 ? PromptDialog.Ask("Custom prompt", "Prompt", settings.AnswerPrompt)
                 : settings.AnswerPrompt;
             if (string.IsNullOrWhiteSpace(prompt)) return;
@@ -93,6 +99,7 @@ sealed class TrayAppContext : ApplicationContext
         if (form.ShowDialog() != DialogResult.OK) return;
         settings.Save();
         hotkeys.RegisterAll();
+        tray.ContextMenuStrip = BuildMenu();
         tray.ShowBalloonTip(1500, "ez-9router", "Settings saved.", ToolTipIcon.Info);
     }
 
@@ -107,6 +114,15 @@ sealed class TrayAppContext : ApplicationContext
 
 enum AppAction { AnswerSelection = 1, Snip = 2, CustomPrompt = 3, ToggleSemiStealth = 4 }
 
+sealed record AppCommand(AppAction Action, int SnipIndex = 0);
+
+sealed class SnipPromptConfig
+{
+    public string Title { get; set; } = "Snip prompt";
+    public string Prompt { get; set; } = "Analyze this browser snip and answer with the useful details.";
+    public string Hotkey { get; set; } = "Ctrl+Alt+2";
+}
+
 sealed class AppSettings
 {
     static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ez-9router-native");
@@ -119,6 +135,7 @@ sealed class AppSettings
     public string SnipPrompt { get; set; } = "Analyze this browser snip and answer with the useful details.";
     public string AnswerHotkey { get; set; } = "Ctrl+Alt+1";
     public string SnipHotkey { get; set; } = "Ctrl+Alt+2";
+    public List<SnipPromptConfig> SnipPrompts { get; set; } = new();
     public string CustomHotkey { get; set; } = "Ctrl+Alt+3";
     public string SemiStealthHotkey { get; set; } = "Ctrl+Alt+4";
     public string SnipOutlineColor { get; set; } = "#ff2b2b";
@@ -138,14 +155,44 @@ sealed class AppSettings
     {
         try
         {
-            if (File.Exists(PathName)) return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(PathName)) ?? new AppSettings();
+            if (File.Exists(PathName))
+            {
+                var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(PathName)) ?? new AppSettings();
+                settings.NormalizeSnipPrompts();
+                return settings;
+            }
         }
         catch { }
-        return new AppSettings();
+        var fresh = new AppSettings();
+        fresh.NormalizeSnipPrompts();
+        return fresh;
+    }
+
+    public List<SnipPromptConfig> GetSnipPrompts()
+    {
+        NormalizeSnipPrompts();
+        return SnipPrompts;
+    }
+
+    public void NormalizeSnipPrompts()
+    {
+        if (SnipPrompts.Count == 0)
+        {
+            SnipPrompts.Add(new SnipPromptConfig { Title = "Snip prompt 1", Prompt = SnipPrompt, Hotkey = SnipHotkey });
+        }
+        for (var i = 0; i < SnipPrompts.Count; i++)
+        {
+            SnipPrompts[i].Title = string.IsNullOrWhiteSpace(SnipPrompts[i].Title) ? $"Snip prompt {i + 1}" : SnipPrompts[i].Title.Trim();
+            SnipPrompts[i].Prompt = string.IsNullOrWhiteSpace(SnipPrompts[i].Prompt) ? SnipPrompt : SnipPrompts[i].Prompt;
+            SnipPrompts[i].Hotkey = string.IsNullOrWhiteSpace(SnipPrompts[i].Hotkey) ? $"Ctrl+Alt+{Math.Min(i + 2, 9)}" : SnipPrompts[i].Hotkey.Trim();
+        }
+        SnipPrompt = SnipPrompts[0].Prompt;
+        SnipHotkey = SnipPrompts[0].Hotkey;
     }
 
     public void Save()
     {
+        NormalizeSnipPrompts();
         Directory.CreateDirectory(Dir);
         File.WriteAllText(PathName, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
     }
@@ -355,10 +402,10 @@ sealed class HotkeySink : NativeWindow, IDisposable
 {
     const int WmHotkey = 0x0312;
     readonly AppSettings settings;
-    readonly Func<AppAction, Task> handler;
-    readonly Dictionary<int, AppAction> actions = new();
+    readonly Func<AppCommand, Task> handler;
+    readonly Dictionary<int, AppCommand> actions = new();
 
-    public HotkeySink(AppSettings settings, Func<AppAction, Task> handler)
+    public HotkeySink(AppSettings settings, Func<AppCommand, Task> handler)
     {
         this.settings = settings;
         this.handler = handler;
@@ -368,13 +415,14 @@ sealed class HotkeySink : NativeWindow, IDisposable
     public void RegisterAll()
     {
         UnregisterAll();
-        Register(1, settings.AnswerHotkey, AppAction.AnswerSelection);
-        Register(2, settings.SnipHotkey, AppAction.Snip);
-        Register(3, settings.CustomHotkey, AppAction.CustomPrompt);
-        Register(4, settings.SemiStealthHotkey, AppAction.ToggleSemiStealth);
+        Register(1, settings.AnswerHotkey, new AppCommand(AppAction.AnswerSelection));
+        var snipPrompts = settings.GetSnipPrompts();
+        for (var i = 0; i < snipPrompts.Count; i++) Register(100 + i, snipPrompts[i].Hotkey, new AppCommand(AppAction.Snip, i));
+        Register(3, settings.CustomHotkey, new AppCommand(AppAction.CustomPrompt));
+        Register(4, settings.SemiStealthHotkey, new AppCommand(AppAction.ToggleSemiStealth));
     }
 
-    void Register(int id, string chord, AppAction action)
+    void Register(int id, string chord, AppCommand action)
     {
         if (!Hotkey.Parse(chord, out var mods, out var key)) return;
         if (RegisterHotKey(Handle, id, mods, key)) actions[id] = action;
@@ -509,6 +557,7 @@ sealed class SettingsForm2 : Form
     readonly AppSettings settings;
     readonly RouterClient router;
     readonly Dictionary<string, Control> fields = new();
+    int snipPromptCount;
     readonly Color bg = Color.FromArgb(18, 17, 15);
     readonly Color panel = Color.FromArgb(31, 29, 25);
     readonly Color text = Color.FromArgb(248, 240, 232);
@@ -549,13 +598,20 @@ sealed class SettingsForm2 : Form
 
         var prompts = Card("Prompts");
         AddText(prompts, "Answer prompt", settings.AnswerPrompt, false, 64);
-        AddText(prompts, "Snip prompt", settings.SnipPrompt, false, 64);
         AddText(prompts, "Snip outline color", settings.SnipOutlineColor);
+        foreach (var slot in settings.GetSnipPrompts()) AddSnipPrompt(prompts, slot);
+        var addSnip = Button("Add snip prompt");
+        addSnip.Click += (_, _) =>
+        {
+            prompts.Controls.Remove(addSnip);
+            AddSnipPrompt(prompts, new SnipPromptConfig { Title = $"Snip prompt {snipPromptCount + 1}", Hotkey = NextSnipHotkey() });
+            prompts.Controls.Add(addSnip);
+        };
+        prompts.Controls.Add(addSnip);
         root.Controls.Add(prompts);
 
         var keys = Card("Hotkeys");
         AddHotkey(keys, "Answer hotkey", settings.AnswerHotkey);
-        AddHotkey(keys, "Snip hotkey", settings.SnipHotkey);
         AddHotkey(keys, "Custom hotkey", settings.CustomHotkey);
         AddHotkey(keys, "Semi-stealth toggle", settings.SemiStealthHotkey);
         root.Controls.Add(keys);
@@ -583,6 +639,16 @@ sealed class SettingsForm2 : Form
         card.Controls.Add(box);
     }
 
+    void AddSnipPrompt(FlowLayoutPanel card, SnipPromptConfig slot)
+    {
+        var index = ++snipPromptCount;
+        card.Controls.Add(new Label { Text = $"Snip prompt {index}", Width = 460, Height = 22, ForeColor = text, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), Margin = new Padding(0, 10, 0, 0) });
+        AddText(card, $"Snip {index} title", slot.Title);
+        AddText(card, $"Snip {index} prompt", slot.Prompt, false, 64);
+        AddHotkey(card, $"Snip {index} hotkey", slot.Hotkey);
+    }
+
+    string NextSnipHotkey() => $"Ctrl+Alt+{Math.Min(snipPromptCount + 2, 9)}";
     void AddModel(FlowLayoutPanel card)
     {
         card.Controls.Add(new Label { Text = "Model", Width = 460, Height = 18, ForeColor = muted });
@@ -629,10 +695,18 @@ sealed class SettingsForm2 : Form
         settings.ApiKey = ((TextBox)fields["API key"]).Text.Trim();
         settings.Model = ((ComboBox)fields["Model"]).Text.Trim();
         settings.AnswerPrompt = ((TextBox)fields["Answer prompt"]).Text.Trim();
-        settings.SnipPrompt = ((TextBox)fields["Snip prompt"]).Text.Trim();
         settings.SnipOutlineColor = ((TextBox)fields["Snip outline color"]).Text.Trim();
+        settings.SnipPrompts = Enumerable.Range(1, snipPromptCount)
+            .Select(i => new SnipPromptConfig
+            {
+                Title = ((TextBox)fields[$"Snip {i} title"]).Text.Trim(),
+                Prompt = ((TextBox)fields[$"Snip {i} prompt"]).Text.Trim(),
+                Hotkey = ((TextBox)fields[$"Snip {i} hotkey"]).Text.Trim()
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Prompt))
+            .ToList();
+        settings.NormalizeSnipPrompts();
         settings.AnswerHotkey = ((TextBox)fields["Answer hotkey"]).Text.Trim();
-        settings.SnipHotkey = ((TextBox)fields["Snip hotkey"]).Text.Trim();
         settings.CustomHotkey = ((TextBox)fields["Custom hotkey"]).Text.Trim();
         settings.SemiStealthHotkey = ((TextBox)fields["Semi-stealth toggle"]).Text.Trim();
         settings.StealthMode = ((CheckBox)fields["Stealth mode"]).Checked;
