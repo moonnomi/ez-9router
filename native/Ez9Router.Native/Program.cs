@@ -406,15 +406,30 @@ sealed class SnipOverlay : Form
 sealed class HotkeySink : NativeWindow, IDisposable
 {
     const int WmHotkey = 0x0312;
+    const int WhKeyboardLl = 13;
+    const int WmKeydown = 0x0100;
+    const int WmSyskeydown = 0x0104;
+    const uint ModAlt = 0x0001;
+    const uint ModCtrl = 0x0002;
+    const uint ModShift = 0x0004;
+    const uint ModWin = 0x0008;
+    const uint ModNoRepeat = 0x4000;
+
     readonly AppSettings settings;
     readonly Func<AppCommand, Task> handler;
     readonly Dictionary<int, AppCommand> actions = new();
+    readonly Dictionary<(uint Mods, uint Key), AppCommand> hookActions = new();
+    readonly Dictionary<AppCommand, long> lastFire = new();
+    readonly LowLevelKeyboardProc hookProc;
+    IntPtr hookHandle;
 
     public HotkeySink(AppSettings settings, Func<AppCommand, Task> handler)
     {
         this.settings = settings;
         this.handler = handler;
+        hookProc = KeyboardHook;
         CreateHandle(new CreateParams());
+        EnsureHook();
     }
 
     public void RegisterAll()
@@ -430,27 +445,78 @@ sealed class HotkeySink : NativeWindow, IDisposable
     void Register(int id, string chord, AppCommand action)
     {
         if (!Hotkey.Parse(chord, out var mods, out var key)) return;
-        if (RegisterHotKey(Handle, id, mods, key)) actions[id] = action;
+        hookActions[(mods, key)] = action;
+        if (RegisterHotKey(Handle, id, mods | ModNoRepeat, key)) actions[id] = action;
+        else if (RegisterHotKey(Handle, id, mods, key)) actions[id] = action;
     }
 
     void UnregisterAll()
     {
         foreach (var id in actions.Keys.ToArray()) UnregisterHotKey(Handle, id);
         actions.Clear();
+        hookActions.Clear();
+        lastFire.Clear();
     }
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == WmHotkey && actions.TryGetValue(m.WParam.ToInt32(), out var action)) _ = handler(action);
+        if (m.Msg == WmHotkey && actions.TryGetValue(m.WParam.ToInt32(), out var action)) Fire(action);
         base.WndProc(ref m);
     }
 
-    public void Dispose() { UnregisterAll(); DestroyHandle(); }
+    void Fire(AppCommand action)
+    {
+        var now = Environment.TickCount64;
+        if (lastFire.TryGetValue(action, out var previous) && now - previous < 350) return;
+        lastFire[action] = now;
+        _ = handler(action);
+    }
+
+    void EnsureHook()
+    {
+        if (hookHandle != IntPtr.Zero) return;
+        hookHandle = SetWindowsHookEx(WhKeyboardLl, hookProc, IntPtr.Zero, 0);
+    }
+
+    IntPtr KeyboardHook(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && (wParam == (IntPtr)WmKeydown || wParam == (IntPtr)WmSyskeydown))
+        {
+            var key = (uint)Marshal.ReadInt32(lParam);
+            var mods = CurrentMods();
+            if (hookActions.TryGetValue((mods, key), out var action)) Fire(action);
+        }
+        return CallNextHookEx(hookHandle, nCode, wParam, lParam);
+    }
+
+    static uint CurrentMods()
+    {
+        uint mods = 0;
+        if (Down(Keys.Menu)) mods |= ModAlt;
+        if (Down(Keys.ControlKey)) mods |= ModCtrl;
+        if (Down(Keys.ShiftKey)) mods |= ModShift;
+        if (Down(Keys.LWin) || Down(Keys.RWin)) mods |= ModWin;
+        return mods;
+    }
+
+    static bool Down(Keys key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
+
+    public void Dispose()
+    {
+        UnregisterAll();
+        if (hookHandle != IntPtr.Zero) UnhookWindowsHookEx(hookHandle);
+        DestroyHandle();
+    }
+
+    delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+    [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+    [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hhk);
+    [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
 }
-
 static class Hotkey
 {
     public static bool ParseKey(string text, out Keys key)
