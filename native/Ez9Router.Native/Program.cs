@@ -452,6 +452,8 @@ sealed class SnipOverlay : Form
     protected override void OnMouseMove(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { rect = Normalize(start, e.Location); Invalidate(); } }
     protected override void OnMouseUp(MouseEventArgs e)
     {
+        if (e.Button == MouseButtons.Right) { DialogResult = DialogResult.Cancel; Close(); return; }
+        if (e.Button != MouseButtons.Left) return;
         rect = Normalize(start, e.Location);
         if (rect.Width < 8 || rect.Height < 8) { DialogResult = DialogResult.Cancel; Close(); return; }
         Hide();
@@ -988,6 +990,8 @@ sealed class SnipOverlay2 : Form
     }
     protected override void OnMouseDown(MouseEventArgs e)
     {
+        if (e.Button == MouseButtons.Right) { Cancel(); return; }
+        if (e.Button != MouseButtons.Left) return;
         start = e.Location;
         rect = new Rectangle(e.Location, Size.Empty);
         guide?.ShowAt(PointToScreen(e.Location));
@@ -1004,6 +1008,8 @@ sealed class SnipOverlay2 : Form
     }
     protected override void OnMouseUp(MouseEventArgs e)
     {
+        if (e.Button == MouseButtons.Right) { Cancel(); return; }
+        if (e.Button != MouseButtons.Left) return;
         rect = Normalize(start, e.Location);
         if (rect.Width < 8 || rect.Height < 8) { DialogResult = DialogResult.Cancel; Close(); return; }
         SnipScreenRect = ToScreen(rect);
