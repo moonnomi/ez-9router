@@ -16,6 +16,8 @@ sealed class TrayAppContext : ApplicationContext
     readonly HotkeySink hotkeys;
     readonly AppSettings settings;
     readonly RouterClient router;
+    readonly Dictionary<int, List<Bitmap>> pendingSnips = new();
+    readonly Dictionary<int, Rectangle> pendingSnipAnchors = new();
 
     public TrayAppContext()
     {
@@ -41,7 +43,8 @@ sealed class TrayAppContext : ApplicationContext
         {
             var index = i;
             var title = string.IsNullOrWhiteSpace(snipPrompts[i].Title) ? $"Snip prompt {i + 1}" : snipPrompts[i].Title;
-            menu.Items.Add(title, null, async (_, _) => await RunAction(new AppCommand(AppAction.Snip, index)));
+            menu.Items.Add($"{title} - store image", null, async (_, _) => await RunAction(new AppCommand(AppAction.StoreSnipImage, index)));
+            menu.Items.Add($"{title} - capture & submit", null, async (_, _) => await RunAction(new AppCommand(AppAction.SubmitSnipImages, index)));
         }
         menu.Items.Add("Custom prompt for selection", null, async (_, _) => await RunAction(new AppCommand(AppAction.CustomPrompt)));
         menu.Items.Add("Toggle semi-stealth", null, async (_, _) => await RunAction(new AppCommand(AppAction.ToggleSemiStealth)));
@@ -63,13 +66,9 @@ sealed class TrayAppContext : ApplicationContext
                 return;
             }
 
-            if (command.Action == AppAction.Snip)
+            if (command.Action is AppAction.StoreSnipImage or AppAction.SubmitSnipImages)
             {
-                using var overlay = new SnipOverlay2(settings.StealthMode, settings.SnipOutlineColorValue, settings.SnipCancelKeyValue);
-                if (overlay.ShowDialog() != DialogResult.OK || overlay.SnipBitmap == null) return;
-                var snipPrompt = settings.GetSnipPrompts()[Math.Clamp(command.SnipIndex, 0, settings.GetSnipPrompts().Count - 1)].Prompt;
-                var answer = await router.AskImageAsync(snipPrompt, overlay.SnipBitmap);
-                new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip, overlay.SnipScreenRect).Show();
+                await RunSnipAction(command);
                 return;
             }
 
@@ -94,6 +93,49 @@ sealed class TrayAppContext : ApplicationContext
         }
     }
 
+    async Task RunSnipAction(AppCommand command)
+    {
+        var capture = CaptureImage();
+        if (capture == null) return;
+
+        var index = Math.Clamp(command.SnipIndex, 0, settings.GetSnipPrompts().Count - 1);
+        if (command.Action == AppAction.StoreSnipImage)
+        {
+            if (!pendingSnips.TryGetValue(index, out var stored)) pendingSnips[index] = stored = new List<Bitmap>();
+            stored.Add(capture.Bitmap);
+            pendingSnipAnchors[index] = capture.Bounds;
+            if (settings.StealthMode) ToggleToast.Show($"stored #{stored.Count}");
+            else tray.ShowBalloonTip(1200, "ez-9router", $"Stored image #{stored.Count}.", ToolTipIcon.Info);
+            return;
+        }
+
+        var images = new List<Bitmap>();
+        if (pendingSnips.TryGetValue(index, out var pending)) images.AddRange(pending);
+        images.Add(capture.Bitmap);
+        pendingSnips.Remove(index);
+        var anchor = pendingSnipAnchors.TryGetValue(index, out var storedAnchor) ? storedAnchor : capture.Bounds;
+        pendingSnipAnchors.Remove(index);
+
+        try
+        {
+            var prompt = settings.GetSnipPrompts()[index].Prompt;
+            var answer = await router.AskImagesAsync(prompt, images);
+            new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip, anchor).Show();
+        }
+        finally
+        {
+            foreach (var image in images) image.Dispose();
+        }
+    }
+
+    CaptureResult? CaptureImage()
+    {
+        if (settings.FullscreenScreenshotMode) return ScreenshotTools.CaptureVirtualScreen();
+        using var overlay = new SnipOverlay2(settings.StealthMode, settings.SnipOutlineColorValue, settings.SnipCancelKeyValue);
+        return overlay.ShowDialog() == DialogResult.OK && overlay.SnipBitmap != null
+            ? new CaptureResult((Bitmap)overlay.SnipBitmap.Clone(), overlay.SnipScreenRect)
+            : null;
+    }
     void OpenSettings()
     {
         using var form = new SettingsForm2(settings, router);
@@ -113,7 +155,7 @@ sealed class TrayAppContext : ApplicationContext
     }
 }
 
-enum AppAction { AnswerSelection = 1, Snip = 2, CustomPrompt = 3, ToggleSemiStealth = 4 }
+enum AppAction { AnswerSelection = 1, StoreSnipImage = 2, SubmitSnipImages = 3, CustomPrompt = 4, ToggleSemiStealth = 5 }
 
 sealed record AppCommand(AppAction Action, int SnipIndex = 0);
 
@@ -122,6 +164,8 @@ sealed class SnipPromptConfig
     public string Title { get; set; } = "Snip prompt";
     public string Prompt { get; set; } = "Analyze this browser snip and answer with the useful details.";
     public string Hotkey { get; set; } = "Ctrl+Alt+2";
+    public string StoreHotkey { get; set; } = "Ctrl+Alt+Shift+2";
+    public string SubmitHotkey { get; set; } = "Ctrl+Alt+2";
 }
 
 sealed class AppSettings
@@ -141,6 +185,8 @@ sealed class AppSettings
     public string SemiStealthHotkey { get; set; } = "Ctrl+Alt+4";
     public string SnipCancelKey { get; set; } = "Esc";
     public string SnipOutlineColor { get; set; } = "#ff2b2b";
+    public bool FullscreenScreenshotMode { get; set; }
+    public int TextBoxHeight { get; set; } = 32;
     public bool StealthMode { get; set; }
     public bool SemiStealthSnip { get; set; }
 
@@ -183,16 +229,19 @@ sealed class AppSettings
     {
         if (SnipPrompts.Count == 0)
         {
-            SnipPrompts.Add(new SnipPromptConfig { Title = "Snip prompt 1", Prompt = SnipPrompt, Hotkey = SnipHotkey });
+            SnipPrompts.Add(new SnipPromptConfig { Title = "Snip prompt 1", Prompt = SnipPrompt, Hotkey = SnipHotkey, SubmitHotkey = SnipHotkey, StoreHotkey = "Ctrl+Alt+Shift+2" });
         }
         for (var i = 0; i < SnipPrompts.Count; i++)
         {
             SnipPrompts[i].Title = string.IsNullOrWhiteSpace(SnipPrompts[i].Title) ? $"Snip prompt {i + 1}" : SnipPrompts[i].Title.Trim();
             SnipPrompts[i].Prompt = string.IsNullOrWhiteSpace(SnipPrompts[i].Prompt) ? SnipPrompt : SnipPrompts[i].Prompt;
             SnipPrompts[i].Hotkey = string.IsNullOrWhiteSpace(SnipPrompts[i].Hotkey) ? $"Ctrl+Alt+{Math.Min(i + 2, 9)}" : SnipPrompts[i].Hotkey.Trim();
+            SnipPrompts[i].SubmitHotkey = string.IsNullOrWhiteSpace(SnipPrompts[i].SubmitHotkey) ? SnipPrompts[i].Hotkey : SnipPrompts[i].SubmitHotkey.Trim();
+            SnipPrompts[i].StoreHotkey = string.IsNullOrWhiteSpace(SnipPrompts[i].StoreHotkey) ? $"Ctrl+Alt+Shift+{Math.Min(i + 2, 9)}" : SnipPrompts[i].StoreHotkey.Trim();
         }
         SnipPrompt = SnipPrompts[0].Prompt;
-        SnipHotkey = SnipPrompts[0].Hotkey;
+        SnipHotkey = SnipPrompts[0].SubmitHotkey;
+        TextBoxHeight = Math.Clamp(TextBoxHeight, 22, 120);
     }
 
     public void Save()
@@ -200,6 +249,20 @@ sealed class AppSettings
         NormalizeSnipPrompts();
         Directory.CreateDirectory(Dir);
         File.WriteAllText(PathName, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+    }
+}
+
+sealed record CaptureResult(Bitmap Bitmap, Rectangle Bounds);
+
+static class ScreenshotTools
+{
+    public static CaptureResult CaptureVirtualScreen()
+    {
+        var bounds = SystemInformation.VirtualScreen;
+        var bitmap = new Bitmap(bounds.Width, bounds.Height);
+        using var g = Graphics.FromImage(bitmap);
+        g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+        return new CaptureResult(bitmap, bounds);
     }
 }
 
@@ -229,17 +292,19 @@ sealed class RouterClient
         return AskAsync(content);
     }
 
-    public Task<string> AskImageAsync(string prompt, Bitmap bitmap)
+    public Task<string> AskImageAsync(string prompt, Bitmap bitmap) => AskImagesAsync(prompt, new[] { bitmap });
+
+    public Task<string> AskImagesAsync(string prompt, IEnumerable<Bitmap> bitmaps)
     {
-        using var ms = new MemoryStream();
-        bitmap.Save(ms, ImageFormat.Jpeg);
-        var data = "data:image/jpeg;base64," + Convert.ToBase64String(ms.ToArray());
-        object content = new object[]
+        var content = new List<object> { new { type = "text", text = prompt } };
+        foreach (var bitmap in bitmaps)
         {
-            new { type = "text", text = prompt },
-            new { type = "image_url", image_url = new { url = data } }
-        };
-        return AskAsync(content);
+            using var ms = new MemoryStream();
+            bitmap.Save(ms, ImageFormat.Jpeg);
+            var data = "data:image/jpeg;base64," + Convert.ToBase64String(ms.ToArray());
+            content.Add(new { type = "image_url", image_url = new { url = data } });
+        }
+        return AskAsync(content.ToArray());
     }
 
     async Task<string> AskAsync(object userContent)
@@ -380,7 +445,6 @@ sealed class SnipOverlay : Form
         TopMost = true;
         Opacity = .22;
         BackColor = Color.Black;
-        Cursor = Cursors.Cross;
         DoubleBuffered = true;
     }
 
@@ -437,7 +501,11 @@ sealed class HotkeySink : NativeWindow, IDisposable
         UnregisterAll();
         Register(1, settings.AnswerHotkey, new AppCommand(AppAction.AnswerSelection));
         var snipPrompts = settings.GetSnipPrompts();
-        for (var i = 0; i < snipPrompts.Count; i++) Register(100 + i, snipPrompts[i].Hotkey, new AppCommand(AppAction.Snip, i));
+        for (var i = 0; i < snipPrompts.Count; i++)
+        {
+            Register(100 + i, snipPrompts[i].StoreHotkey, new AppCommand(AppAction.StoreSnipImage, i));
+            Register(200 + i, snipPrompts[i].SubmitHotkey, new AppCommand(AppAction.SubmitSnipImages, i));
+        }
         Register(3, settings.CustomHotkey, new AppCommand(AppAction.CustomPrompt));
         Register(4, settings.SemiStealthHotkey, new AppCommand(AppAction.ToggleSemiStealth));
     }
@@ -678,6 +746,8 @@ sealed class SettingsForm2 : Form
         var modes = Card("Modes");
         AddCheck(modes, "Stealth mode", settings.StealthMode);
         AddCheck(modes, "Semi-stealth snip", settings.SemiStealthSnip);
+        AddCheck(modes, "Fullscreen screenshots", settings.FullscreenScreenshotMode);
+        AddText(modes, "Text box height", settings.TextBoxHeight.ToString());
         root.Controls.Add(modes);
 
         var prompts = Card("Prompts");
@@ -688,7 +758,7 @@ sealed class SettingsForm2 : Form
         addSnip.Click += (_, _) =>
         {
             prompts.Controls.Remove(addSnip);
-            AddSnipPrompt(prompts, new SnipPromptConfig { Title = $"Snip prompt {snipPromptCount + 1}", Hotkey = NextSnipHotkey() });
+            AddSnipPrompt(prompts, new SnipPromptConfig { Title = $"Snip prompt {snipPromptCount + 1}", StoreHotkey = NextSnipStoreHotkey(), SubmitHotkey = NextSnipHotkey(), Hotkey = NextSnipHotkey() });
             prompts.Controls.Add(addSnip);
         };
         prompts.Controls.Add(addSnip);
@@ -719,7 +789,8 @@ sealed class SettingsForm2 : Form
     void AddText(FlowLayoutPanel card, string label, string value, bool password = false, int height = 32)
     {
         card.Controls.Add(new Label { Text = label, Width = 460, Height = 18, ForeColor = muted });
-        var box = new TextBox { Text = value, Width = 460, Height = height, UseSystemPasswordChar = password, BackColor = Color.FromArgb(20, 19, 17), ForeColor = text, BorderStyle = BorderStyle.FixedSingle, Multiline = height > 40 };
+        var actualHeight = height > 40 ? height : settings.TextBoxHeight;
+        var box = new TextBox { Text = value, Width = height > 40 ? 460 : 280, Height = actualHeight, UseSystemPasswordChar = password, BackColor = Color.FromArgb(20, 19, 17), ForeColor = text, BorderStyle = BorderStyle.FixedSingle, Multiline = height > 40 || actualHeight > 32 };
         fields[label] = box;
         card.Controls.Add(box);
     }
@@ -730,10 +801,12 @@ sealed class SettingsForm2 : Form
         card.Controls.Add(new Label { Text = $"Snip prompt {index}", Width = 460, Height = 22, ForeColor = text, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), Margin = new Padding(0, 10, 0, 0) });
         AddText(card, $"Snip {index} title", slot.Title);
         AddText(card, $"Snip {index} prompt", slot.Prompt, false, 64);
-        AddHotkey(card, $"Snip {index} hotkey", slot.Hotkey);
+        AddHotkey(card, $"Snip {index} store hotkey", slot.StoreHotkey);
+        AddHotkey(card, $"Snip {index} submit hotkey", slot.SubmitHotkey);
     }
 
     string NextSnipHotkey() => $"Ctrl+Alt+{Math.Min(snipPromptCount + 2, 9)}";
+    string NextSnipStoreHotkey() => $"Ctrl+Alt+Shift+{Math.Min(snipPromptCount + 2, 9)}";
     void AddModel(FlowLayoutPanel card)
     {
         card.Controls.Add(new Label { Text = "Model", Width = 460, Height = 18, ForeColor = muted });
@@ -786,7 +859,9 @@ sealed class SettingsForm2 : Form
             {
                 Title = ((TextBox)fields[$"Snip {i} title"]).Text.Trim(),
                 Prompt = ((TextBox)fields[$"Snip {i} prompt"]).Text.Trim(),
-                Hotkey = ((TextBox)fields[$"Snip {i} hotkey"]).Text.Trim()
+                Hotkey = ((TextBox)fields[$"Snip {i} submit hotkey"]).Text.Trim(),
+                StoreHotkey = ((TextBox)fields[$"Snip {i} store hotkey"]).Text.Trim(),
+                SubmitHotkey = ((TextBox)fields[$"Snip {i} submit hotkey"]).Text.Trim()
             })
             .Where(x => !string.IsNullOrWhiteSpace(x.Prompt))
             .ToList();
@@ -797,6 +872,8 @@ sealed class SettingsForm2 : Form
         settings.SnipCancelKey = ((TextBox)fields["Snip cancel key"]).Text.Trim();
         settings.StealthMode = ((CheckBox)fields["Stealth mode"]).Checked;
         settings.SemiStealthSnip = ((CheckBox)fields["Semi-stealth snip"]).Checked;
+        settings.FullscreenScreenshotMode = ((CheckBox)fields["Fullscreen screenshots"]).Checked;
+        if (int.TryParse(((TextBox)fields["Text box height"]).Text.Trim(), out var textBoxHeight)) settings.TextBoxHeight = textBoxHeight;
         DialogResult = DialogResult.OK;
         Close();
     }
@@ -846,7 +923,7 @@ sealed class SnipOverlay2 : Form
         quiet = stealth;
         outline = outlineColor;
         this.cancelKey = cancelKey;
-        if (quiet) guide = new SnipGuideWindow(outlineColor);
+        guide = new SnipGuideWindow(outlineColor);
         StartPosition = FormStartPosition.Manual;
         Bounds = SystemInformation.VirtualScreen;
         ShowInTaskbar = false;
@@ -855,22 +932,21 @@ sealed class SnipOverlay2 : Form
         Opacity = stealth ? .01 : .22;
         BackColor = Color.Black;
         TransparencyKey = Color.Empty;
-        Cursor = Cursors.Cross;
         DoubleBuffered = true;
     }
     protected override void OnMouseDown(MouseEventArgs e)
     {
         start = e.Location;
         rect = new Rectangle(e.Location, Size.Empty);
-        if (quiet) guide?.ShowAt(PointToScreen(e.Location));
+        guide?.ShowAt(PointToScreen(e.Location));
     }
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        if (quiet && e.Button != MouseButtons.Left) guide?.ShowAt(PointToScreen(e.Location));
+        if (e.Button != MouseButtons.Left) guide?.ShowAt(PointToScreen(e.Location));
         if (e.Button == MouseButtons.Left)
         {
             rect = Normalize(start, e.Location);
-            if (quiet) guide?.ShowRect(ToScreen(rect));
+            guide?.ShowRect(ToScreen(rect));
             Invalidate();
         }
     }
@@ -908,13 +984,15 @@ sealed class SnipOverlay2 : Form
 
 sealed class ToggleToast : Form
 {
-    public static void Show(bool value)
+    public static void Show(bool value) => Show(value ? "true" : "false");
+
+    public static void Show(string text)
     {
-        var toast = new ToggleToast(value);
+        var toast = new ToggleToast(text);
         toast.Show();
     }
 
-    ToggleToast(bool value)
+    ToggleToast(string value)
     {
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
@@ -926,7 +1004,7 @@ sealed class ToggleToast : Form
         ForeColor = Color.Black;
         var area = Screen.PrimaryScreen?.WorkingArea ?? SystemInformation.WorkingArea;
         Location = new Point(area.Right - Width - 18, area.Bottom - Height - 18);
-        Controls.Add(new Label { Dock = DockStyle.Fill, Text = value ? "true" : "false", TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Arial", 12, FontStyle.Bold), BackColor = Color.White, ForeColor = Color.Black });
+        Controls.Add(new Label { Dock = DockStyle.Fill, Text = value, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Arial", 12, FontStyle.Bold), BackColor = Color.White, ForeColor = Color.Black });
         var timer = new System.Windows.Forms.Timer { Interval = 1000 };
         timer.Tick += (_, _) => { timer.Stop(); Close(); Dispose(); };
         timer.Start();
