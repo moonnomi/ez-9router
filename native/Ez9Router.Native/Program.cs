@@ -471,8 +471,12 @@ sealed class HotkeySink : NativeWindow, IDisposable
 {
     const int WmHotkey = 0x0312;
     const int WhKeyboardLl = 13;
+    const int WhMouseLl = 14;
     const int WmKeydown = 0x0100;
     const int WmSyskeydown = 0x0104;
+    const int WmXbuttondown = 0x020B;
+    const uint VkXbutton1 = 0x05;
+    const uint VkXbutton2 = 0x06;
     const uint ModAlt = 0x0001;
     const uint ModCtrl = 0x0002;
     const uint ModShift = 0x0004;
@@ -484,14 +488,17 @@ sealed class HotkeySink : NativeWindow, IDisposable
     readonly Dictionary<int, AppCommand> actions = new();
     readonly Dictionary<(uint Mods, uint Key), AppCommand> hookActions = new();
     readonly Dictionary<AppCommand, long> lastFire = new();
-    readonly LowLevelKeyboardProc hookProc;
-    IntPtr hookHandle;
+    readonly LowLevelProc keyboardHookProc;
+    readonly LowLevelProc mouseHookProc;
+    IntPtr keyboardHookHandle;
+    IntPtr mouseHookHandle;
 
     public HotkeySink(AppSettings settings, Func<AppCommand, Task> handler)
     {
         this.settings = settings;
         this.handler = handler;
-        hookProc = KeyboardHook;
+        keyboardHookProc = KeyboardHook;
+        mouseHookProc = MouseHook;
         CreateHandle(new CreateParams());
         EnsureHook();
     }
@@ -514,6 +521,7 @@ sealed class HotkeySink : NativeWindow, IDisposable
     {
         if (!Hotkey.Parse(chord, out var mods, out var key)) return;
         hookActions[(mods, key)] = action;
+        if (key is VkXbutton1 or VkXbutton2) return;
         if (RegisterHotKey(Handle, id, mods | ModNoRepeat, key)) actions[id] = action;
         else if (RegisterHotKey(Handle, id, mods, key)) actions[id] = action;
     }
@@ -542,8 +550,8 @@ sealed class HotkeySink : NativeWindow, IDisposable
 
     void EnsureHook()
     {
-        if (hookHandle != IntPtr.Zero) return;
-        hookHandle = SetWindowsHookEx(WhKeyboardLl, hookProc, IntPtr.Zero, 0);
+        if (keyboardHookHandle == IntPtr.Zero) keyboardHookHandle = SetWindowsHookEx(WhKeyboardLl, keyboardHookProc, IntPtr.Zero, 0);
+        if (mouseHookHandle == IntPtr.Zero) mouseHookHandle = SetWindowsHookEx(WhMouseLl, mouseHookProc, IntPtr.Zero, 0);
     }
 
     IntPtr KeyboardHook(int nCode, IntPtr wParam, IntPtr lParam)
@@ -551,10 +559,21 @@ sealed class HotkeySink : NativeWindow, IDisposable
         if (nCode >= 0 && (wParam == (IntPtr)WmKeydown || wParam == (IntPtr)WmSyskeydown))
         {
             var key = (uint)Marshal.ReadInt32(lParam);
-            var mods = CurrentMods();
-            if (hookActions.TryGetValue((mods, key), out var action)) Fire(action);
+            if (hookActions.TryGetValue((CurrentMods(), key), out var action)) Fire(action);
         }
-        return CallNextHookEx(hookHandle, nCode, wParam, lParam);
+        return CallNextHookEx(keyboardHookHandle, nCode, wParam, lParam);
+    }
+
+    IntPtr MouseHook(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && wParam == (IntPtr)WmXbuttondown)
+        {
+            var mouseData = Marshal.ReadInt32(lParam, 8);
+            var button = (mouseData >> 16) & 0xffff;
+            var key = button == 1 ? VkXbutton1 : button == 2 ? VkXbutton2 : 0;
+            if (key != 0 && hookActions.TryGetValue((CurrentMods(), key), out var action)) Fire(action);
+        }
+        return CallNextHookEx(mouseHookHandle, nCode, wParam, lParam);
     }
 
     static uint CurrentMods()
@@ -572,15 +591,16 @@ sealed class HotkeySink : NativeWindow, IDisposable
     public void Dispose()
     {
         UnregisterAll();
-        if (hookHandle != IntPtr.Zero) UnhookWindowsHookEx(hookHandle);
+        if (keyboardHookHandle != IntPtr.Zero) UnhookWindowsHookEx(keyboardHookHandle);
+        if (mouseHookHandle != IntPtr.Zero) UnhookWindowsHookEx(mouseHookHandle);
         DestroyHandle();
     }
 
-    delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+    delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-    [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+    [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int idHook, LowLevelProc lpfn, IntPtr hMod, uint dwThreadId);
     [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hhk);
     [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
@@ -595,6 +615,8 @@ static class Hotkey
         if (string.IsNullOrWhiteSpace(part)) return false;
         if (part.Length == 1) { key = (Keys)part[0]; return true; }
         if (part == "ESC") { key = Keys.Escape; return true; }
+        if (part is "MOUSE4" or "XBUTTON1" or "X1") { key = Keys.XButton1; return true; }
+        if (part is "MOUSE5" or "XBUTTON2" or "X2") { key = Keys.XButton2; return true; }
         if (part.StartsWith("NUM") && int.TryParse(part[3..], out var n) && n is >= 0 and <= 9) { key = Keys.NumPad0 + n; return true; }
         if (part.StartsWith('F') && int.TryParse(part[1..], out var f) && f is >= 1 and <= 24) { key = Keys.F1 + f - 1; return true; }
         return Enum.TryParse(part, true, out key);
@@ -612,6 +634,8 @@ static class Hotkey
             else if (part == "WIN") mods |= 0x0008;
             else if (part.Length == 1) key = part[0];
             else if (part == "ESC") key = (uint)Keys.Escape;
+            else if (part is "MOUSE4" or "XBUTTON1" or "X1") key = (uint)Keys.XButton1;
+            else if (part is "MOUSE5" or "XBUTTON2" or "X2") key = (uint)Keys.XButton2;
             else if (part.StartsWith("NUM") && int.TryParse(part[3..], out var n) && n is >= 0 and <= 9) key = (uint)(Keys.NumPad0 + n);
             else if (part.StartsWith('F') && int.TryParse(part[1..], out var f) && f is >= 1 and <= 24) key = (uint)(0x70 + f - 1);
             else if (Enum.TryParse<Keys>(part, true, out var parsed)) key = (uint)parsed;
@@ -885,13 +909,18 @@ sealed class HotkeyBox : TextBox
     {
         var key = keyData & Keys.KeyCode;
         if (key is Keys.ControlKey or Keys.Menu or Keys.ShiftKey) return true;
-        var parts = new List<string>();
-        if (keyData.HasFlag(Keys.Control)) parts.Add("Ctrl");
-        if (keyData.HasFlag(Keys.Alt)) parts.Add("Alt");
-        if (keyData.HasFlag(Keys.Shift)) parts.Add("Shift");
-        parts.Add(FormatKey(key));
-        Text = string.Join("+", parts);
+        Text = BuildChord(FormatKey(key));
         return true;
+    }
+
+    static string BuildChord(string key)
+    {
+        var parts = new List<string>();
+        if (ModifierKeys.HasFlag(Keys.Control)) parts.Add("Ctrl");
+        if (ModifierKeys.HasFlag(Keys.Alt)) parts.Add("Alt");
+        if (ModifierKeys.HasFlag(Keys.Shift)) parts.Add("Shift");
+        parts.Add(key);
+        return string.Join("+", parts);
     }
 
     static string FormatKey(Keys key)
