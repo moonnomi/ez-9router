@@ -634,8 +634,8 @@ static class Hotkey
             else if (part == "WIN") mods |= 0x0008;
             else if (part.Length == 1) key = part[0];
             else if (part == "ESC") key = (uint)Keys.Escape;
-            else if (part is "MOUSE4" or "XBUTTON1" or "X1") key = (uint)Keys.XButton1;
-            else if (part is "MOUSE5" or "XBUTTON2" or "X2") key = (uint)Keys.XButton2;
+            else if (part is "MOUSE4" or "XBUTTON1" or "X1") key = 0x05;
+            else if (part is "MOUSE5" or "XBUTTON2" or "X2") key = 0x06;
             else if (part.StartsWith("NUM") && int.TryParse(part[3..], out var n) && n is >= 0 and <= 9) key = (uint)(Keys.NumPad0 + n);
             else if (part.StartsWith('F') && int.TryParse(part[1..], out var f) && f is >= 1 and <= 24) key = (uint)(0x70 + f - 1);
             else if (Enum.TryParse<Keys>(part, true, out var parsed)) key = (uint)parsed;
@@ -905,6 +905,27 @@ sealed class SettingsForm2 : Form
 
 sealed class HotkeyBox : TextBox
 {
+    protected override void WndProc(ref Message m)
+    {
+        const int wmXbuttondown = 0x020B;
+        if (m.Msg == wmXbuttondown)
+        {
+            var button = ((m.WParam.ToInt64() >> 16) & 0xffff) == 1 ? "Mouse4" : "Mouse5";
+            Text = BuildChord(button);
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        if (e.Button is MouseButtons.XButton1 or MouseButtons.XButton2)
+        {
+            Text = BuildChord(e.Button == MouseButtons.XButton1 ? "Mouse4" : "Mouse5");
+            return;
+        }
+        base.OnMouseDown(e);
+    }
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         var key = keyData & Keys.KeyCode;
@@ -932,6 +953,8 @@ sealed class HotkeyBox : TextBox
             Keys.Space => "Space",
             Keys.Return => "Enter",
             Keys.Escape => "Esc",
+            Keys.XButton1 => "Mouse4",
+            Keys.XButton2 => "Mouse5",
             _ => key.ToString()
         };
     }
