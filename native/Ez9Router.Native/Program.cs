@@ -131,7 +131,7 @@ sealed class TrayAppContext : ApplicationContext
     CaptureResult? CaptureImage()
     {
         if (settings.FullscreenScreenshotMode) return ScreenshotTools.CaptureVirtualScreen();
-        using var overlay = new SnipOverlay2(settings.StealthMode, settings.SnipOutlineColorValue, settings.SnipCancelKeyValue);
+        using var overlay = new SnipOverlay2(settings.StealthMode, settings.SnipOutlineColorValue, settings.SnipCancelKeyValue, settings.SnipOutlineOpacity);
         return overlay.ShowDialog() == DialogResult.OK && overlay.SnipBitmap != null
             ? new CaptureResult((Bitmap)overlay.SnipBitmap.Clone(), overlay.SnipScreenRect)
             : null;
@@ -186,6 +186,7 @@ sealed class AppSettings
     public string SemiStealthHotkey { get; set; } = "Ctrl+Alt+4";
     public string SnipCancelKey { get; set; } = "Esc";
     public string SnipOutlineColor { get; set; } = "#ff2b2b";
+    public double SnipOutlineOpacity { get; set; } = 1.0;
     public bool FullscreenScreenshotMode { get; set; }
     public int TextBoxHeight { get; set; } = 32;
     public double TextBoxOpacity { get; set; } = 1.0;
@@ -201,10 +202,8 @@ sealed class AppSettings
     {
         get
         {
-            Color c;
-            try { c = ColorTranslator.FromHtml(SnipOutlineColor); }
-            catch { c = Color.FromArgb(255, 43, 43); }
-            return Color.FromArgb(Math.Clamp((int)(SnipOutlineOpacity * 255), 0, 255), c);
+            try { return ColorTranslator.FromHtml(SnipOutlineColor); }
+            catch { return Color.FromArgb(255, 43, 43); }
         }
     }
     public static AppSettings Load()
@@ -248,6 +247,7 @@ sealed class AppSettings
         SnipHotkey = SnipPrompts[0].SubmitHotkey;
         TextBoxHeight = Math.Clamp(TextBoxHeight, 22, 120);
         TextBoxOpacity = Math.Clamp(TextBoxOpacity, 0.1, 1.0);
+        SnipOutlineOpacity = Math.Clamp(SnipOutlineOpacity, 0.1, 1.0);
     }
 
     public void Save()
@@ -804,6 +804,7 @@ sealed class SettingsForm2 : Form
         var prompts = Card("Prompts");
         AddText(prompts, "Answer prompt", settings.AnswerPrompt, false, 64);
         AddText(prompts, "Snip outline color", settings.SnipOutlineColor);
+        AddText(prompts, "Snip outline opacity", settings.SnipOutlineOpacity.ToString("0.0#"));
         foreach (var slot in settings.GetSnipPrompts()) AddSnipPrompt(prompts, slot);
         var addSnip = Button("Add snip prompt");
         addSnip.Click += (_, _) =>
@@ -914,6 +915,7 @@ sealed class SettingsForm2 : Form
         settings.Model = ((ComboBox)fields["Model"]).Text.Trim();
         settings.AnswerPrompt = ((TextBox)fields["Answer prompt"]).Text.Trim();
         settings.SnipOutlineColor = ((TextBox)fields["Snip outline color"]).Text.Trim();
+        if (double.TryParse(((TextBox)fields["Snip outline opacity"]).Text.Trim(), out var snipOutlineOpacity)) settings.SnipOutlineOpacity = snipOutlineOpacity;
         settings.SnipPrompts = Enumerable.Range(1, snipPromptCount)
             .Select(i => new SnipPromptConfig
             {
@@ -1002,18 +1004,22 @@ sealed class SnipOverlay2 : Form
 {
     readonly bool quiet;
     readonly SnipGuideWindow? guide;
+    readonly SnipOutlineForm? outlineForm;
     readonly Color outline;
+    readonly double outlineOpacity;
     Point start;
     Rectangle rect;
     public Bitmap? SnipBitmap { get; private set; }
     public Rectangle SnipScreenRect { get; private set; }
     readonly Keys cancelKey;
-    public SnipOverlay2(bool stealth, Color outlineColor, Keys cancelKey)
+    public SnipOverlay2(bool stealth, Color outlineColor, Keys cancelKey, double outlineOpacity = 1.0)
     {
         quiet = stealth;
         outline = outlineColor;
+        this.outlineOpacity = outlineOpacity;
         this.cancelKey = cancelKey;
-        guide = new SnipGuideWindow(outlineColor);
+        guide = new SnipGuideWindow(outlineColor, outlineOpacity);
+        outlineForm = new SnipOutlineForm(outlineColor, outlineOpacity);
         StartPosition = FormStartPosition.Manual;
         Bounds = SystemInformation.VirtualScreen;
         ShowInTaskbar = false;
@@ -1039,6 +1045,7 @@ sealed class SnipOverlay2 : Form
         {
             rect = Normalize(start, e.Location);
             guide?.ShowRect(ToScreen(rect));
+            outlineForm?.UpdateRect(ToScreen(rect));
             Invalidate();
         }
     }
@@ -1050,6 +1057,7 @@ sealed class SnipOverlay2 : Form
         if (rect.Width < 8 || rect.Height < 8) { DialogResult = DialogResult.Cancel; Close(); return; }
         SnipScreenRect = ToScreen(rect);
         guide?.Hide();
+        outlineForm?.Hide();
         Hide();
         Thread.Sleep(80);
         SnipBitmap = new Bitmap(rect.Width, rect.Height);
@@ -1060,8 +1068,8 @@ sealed class SnipOverlay2 : Form
     }
     protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == cancelKey) Cancel(); }
     void Cancel() { DialogResult = DialogResult.Cancel; Close(); }
-    protected override void OnFormClosed(FormClosedEventArgs e) { guide?.Dispose(); base.OnFormClosed(e); }
-    protected override void OnPaint(PaintEventArgs e) { using var pen = new Pen(quiet ? outline : Color.OrangeRed, quiet ? 1 : 2); e.Graphics.DrawRectangle(pen, rect); }
+    protected override void OnFormClosed(FormClosedEventArgs e) { guide?.Dispose(); outlineForm?.Dispose(); base.OnFormClosed(e); }
+    protected override void OnPaint(PaintEventArgs e) { outlineForm?.UpdateRect(ToScreen(rect)); }
     protected override CreateParams CreateParams
     {
         get
@@ -1116,12 +1124,58 @@ sealed class ToggleToast : Form
         }
     }
 }
+sealed class SnipOutlineForm : Form
+{
+    readonly Color outline;
+
+    public SnipOutlineForm(Color outlineColor, double opacity)
+    {
+        outline = outlineColor;
+        Opacity = opacity;
+        StartPosition = FormStartPosition.Manual;
+        ShowInTaskbar = false;
+        FormBorderStyle = FormBorderStyle.None;
+        TopMost = true;
+        BackColor = Color.Magenta;
+        TransparencyKey = Color.Magenta;
+        Size = Size.Empty;
+        DoubleBuffered = true;
+    }
+
+    public void UpdateRect(Rectangle rect)
+    {
+        if (rect.Width < 4 || rect.Height < 4) { if (Visible) Hide(); return; }
+        Bounds = rect;
+        if (!Visible) Show();
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        using var pen = new Pen(outline, 2);
+        e.Graphics.DrawRectangle(pen, 1, 1, Width - 3, Height - 3);
+    }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            const int wsExToolWindow = 0x00000080;
+            const int wsExNoActivate = 0x08000000;
+            const int wsExTransparent = 0x00000020;
+            var cp = base.CreateParams;
+            cp.ExStyle |= wsExToolWindow | wsExNoActivate | wsExTransparent;
+            return cp;
+        }
+    }
+}
 sealed class SnipGuideWindow : Form
 {
     readonly Color outline;
-    public SnipGuideWindow(Color outlineColor)
+    public SnipGuideWindow(Color outlineColor, double opacity = 1.0)
     {
         outline = outlineColor;
+        Opacity = opacity;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         FormBorderStyle = FormBorderStyle.None;
