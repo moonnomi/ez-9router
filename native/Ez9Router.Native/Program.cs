@@ -85,7 +85,7 @@ sealed class TrayAppContext : ApplicationContext
             if (string.IsNullOrWhiteSpace(prompt)) return;
 
             var result = await router.AskTextAsync(prompt!, text);
-            new AnswerWindow2(result, settings.StealthMode, false).Show();
+            new AnswerWindow2(result, settings.StealthMode, false, null, settings.TextBoxOpacity).Show();
         }
         catch (Exception ex)
         {
@@ -120,7 +120,7 @@ sealed class TrayAppContext : ApplicationContext
         {
             var prompt = settings.GetSnipPrompts()[index].Prompt;
             var answer = await router.AskImagesAsync(prompt, images);
-            new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip, anchor).Show();
+            new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip, anchor, settings.TextBoxOpacity).Show();
         }
         finally
         {
@@ -187,6 +187,7 @@ sealed class AppSettings
     public string SnipOutlineColor { get; set; } = "#ff2b2b";
     public bool FullscreenScreenshotMode { get; set; }
     public int TextBoxHeight { get; set; } = 32;
+    public double TextBoxOpacity { get; set; } = 1.0;
     public bool StealthMode { get; set; }
     public bool SemiStealthSnip { get; set; }
 
@@ -242,6 +243,7 @@ sealed class AppSettings
         SnipPrompt = SnipPrompts[0].Prompt;
         SnipHotkey = SnipPrompts[0].SubmitHotkey;
         TextBoxHeight = Math.Clamp(TextBoxHeight, 22, 120);
+        TextBoxOpacity = Math.Clamp(TextBoxOpacity, 0.1, 1.0);
     }
 
     public void Save()
@@ -677,7 +679,7 @@ static class PromptDialog
 sealed class AnswerWindow2 : Form
 {
     readonly bool closeOnHoverX;
-    public AnswerWindow2(string answer, bool stealth, bool persistentStealth, Rectangle? anchor = null)
+    public AnswerWindow2(string answer, bool stealth, bool persistentStealth, Rectangle? anchor = null, double opacity = 1.0)
     {
         StartPosition = stealth ? FormStartPosition.Manual : FormStartPosition.CenterScreen;
         ShowInTaskbar = false;
@@ -686,6 +688,7 @@ sealed class AnswerWindow2 : Form
         Height = stealth ? 220 : 360;
         KeyPreview = true;
         closeOnHoverX = stealth && persistentStealth;
+        Opacity = opacity;
         if (stealth)
         {
             var font = new Font("Arial", 10.5f);
@@ -782,6 +785,7 @@ sealed class SettingsForm2 : Form
         AddCheck(modes, "Semi-stealth snip", settings.SemiStealthSnip);
         AddCheck(modes, "Fullscreen screenshots", settings.FullscreenScreenshotMode);
         AddText(modes, "Text box height", settings.TextBoxHeight.ToString());
+        AddText(modes, "Text box opacity", settings.TextBoxOpacity.ToString("0.0#"));
         root.Controls.Add(modes);
 
         var prompts = Card("Prompts");
@@ -908,6 +912,7 @@ sealed class SettingsForm2 : Form
         settings.SemiStealthSnip = ((CheckBox)fields["Semi-stealth snip"]).Checked;
         settings.FullscreenScreenshotMode = ((CheckBox)fields["Fullscreen screenshots"]).Checked;
         if (int.TryParse(((TextBox)fields["Text box height"]).Text.Trim(), out var textBoxHeight)) settings.TextBoxHeight = textBoxHeight;
+        if (double.TryParse(((TextBox)fields["Text box opacity"]).Text.Trim(), out var textBoxOpacity)) settings.TextBoxOpacity = textBoxOpacity;
         DialogResult = DialogResult.OK;
         Close();
     }
