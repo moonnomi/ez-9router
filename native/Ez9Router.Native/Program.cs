@@ -688,12 +688,20 @@ sealed class AnswerWindow2 : Form
         closeOnHoverX = stealth && persistentStealth;
         if (stealth)
         {
+            var font = new Font("Arial", 10.5f);
+            var padding = 12;
+            var maxW = 430;
+            var maxH = 220;
+            var textSize = TextRenderer.MeasureText(answer, font, new Size(maxW - padding * 2, maxH - padding * 2), TextFormatFlags.WordBreak);
+            Width = Math.Max(32, Math.Min(maxW, textSize.Width + padding * 2));
+            Height = Math.Max(32, Math.Min(maxH, textSize.Height + padding * 2));
+
             var area = anchor.HasValue ? Screen.FromRectangle(anchor.Value).WorkingArea : Screen.FromPoint(Cursor.Position).WorkingArea;
             Location = anchor.HasValue ? ClampNearRect(area, anchor.Value, new Size(Width, Height)) : ClampNearCursor(area, new Size(Width, Height));
             FormBorderStyle = FormBorderStyle.None;
             BackColor = Color.White;
             ForeColor = Color.Black;
-            Controls.Add(new Label { Dock = DockStyle.Fill, Text = answer, BackColor = Color.White, ForeColor = Color.Black, Font = new Font("Arial", 10.5f), Padding = new Padding(12), AutoEllipsis = true });
+            Controls.Add(new Label { Dock = DockStyle.Fill, Text = answer, BackColor = Color.White, ForeColor = Color.Black, Font = font, Padding = new Padding(padding), AutoEllipsis = true });
             if (!persistentStealth)
             {
                 var timer = new System.Windows.Forms.Timer { Interval = 1000 };
