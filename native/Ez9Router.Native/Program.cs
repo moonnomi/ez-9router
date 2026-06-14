@@ -247,7 +247,7 @@ sealed class AppSettings
         SnipHotkey = SnipPrompts[0].SubmitHotkey;
         TextBoxHeight = Math.Clamp(TextBoxHeight, 22, 120);
         TextBoxOpacity = Math.Clamp(TextBoxOpacity, 0.1, 1.0);
-        SnipOutlineOpacity = Math.Clamp(SnipOutlineOpacity, 0.1, 1.0);
+        SnipOutlineOpacity = Math.Clamp(SnipOutlineOpacity, 0.0, 1.0);
     }
 
     public void Save()
