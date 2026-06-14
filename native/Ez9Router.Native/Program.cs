@@ -186,7 +186,6 @@ sealed class AppSettings
     public string SemiStealthHotkey { get; set; } = "Ctrl+Alt+4";
     public string SnipCancelKey { get; set; } = "Esc";
     public string SnipOutlineColor { get; set; } = "#ff2b2b";
-    public double SnipOutlineOpacity { get; set; } = 1.0;
     public bool FullscreenScreenshotMode { get; set; }
     public int TextBoxHeight { get; set; } = 32;
     public double TextBoxOpacity { get; set; } = 1.0;
@@ -249,7 +248,6 @@ sealed class AppSettings
         SnipHotkey = SnipPrompts[0].SubmitHotkey;
         TextBoxHeight = Math.Clamp(TextBoxHeight, 22, 120);
         TextBoxOpacity = Math.Clamp(TextBoxOpacity, 0.1, 1.0);
-        SnipOutlineOpacity = Math.Clamp(SnipOutlineOpacity, 0.1, 1.0);
     }
 
     public void Save()
@@ -806,7 +804,6 @@ sealed class SettingsForm2 : Form
         var prompts = Card("Prompts");
         AddText(prompts, "Answer prompt", settings.AnswerPrompt, false, 64);
         AddText(prompts, "Snip outline color", settings.SnipOutlineColor);
-        AddText(prompts, "Snip outline opacity", settings.SnipOutlineOpacity.ToString("0.0#"));
         foreach (var slot in settings.GetSnipPrompts()) AddSnipPrompt(prompts, slot);
         var addSnip = Button("Add snip prompt");
         addSnip.Click += (_, _) =>
@@ -917,7 +914,6 @@ sealed class SettingsForm2 : Form
         settings.Model = ((ComboBox)fields["Model"]).Text.Trim();
         settings.AnswerPrompt = ((TextBox)fields["Answer prompt"]).Text.Trim();
         settings.SnipOutlineColor = ((TextBox)fields["Snip outline color"]).Text.Trim();
-        if (double.TryParse(((TextBox)fields["Snip outline opacity"]).Text.Trim(), out var snipOutlineOpacity)) settings.SnipOutlineOpacity = snipOutlineOpacity;
         settings.SnipPrompts = Enumerable.Range(1, snipPromptCount)
             .Select(i => new SnipPromptConfig
             {
