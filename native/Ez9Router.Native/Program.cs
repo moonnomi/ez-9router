@@ -202,8 +202,10 @@ sealed class AppSettings
     {
         get
         {
-            try { return ColorTranslator.FromHtml(SnipOutlineColor); }
-            catch { return Color.FromArgb(255, 43, 43); }
+            Color c;
+            try { c = ColorTranslator.FromHtml(SnipOutlineColor); }
+            catch { c = Color.FromArgb(255, 43, 43); }
+            return Color.FromArgb(Math.Clamp((int)(SnipOutlineOpacity * 255), 0, 255), c);
         }
     }
     public static AppSettings Load()
