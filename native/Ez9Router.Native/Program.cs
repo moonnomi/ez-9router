@@ -85,7 +85,7 @@ sealed class TrayAppContext : ApplicationContext
             if (string.IsNullOrWhiteSpace(prompt)) return;
 
             var result = await router.AskTextAsync(prompt!, text);
-            new AnswerWindow2(result, settings.StealthMode, false, null, settings.TextBoxOpacity).Show();
+            new AnswerWindow2(result, settings.StealthMode, false, null, settings.TextBoxOpacity, settings.WindowLocation).Show();
         }
         catch (Exception ex)
         {
@@ -120,7 +120,7 @@ sealed class TrayAppContext : ApplicationContext
         {
             var prompt = settings.GetSnipPrompts()[index].Prompt;
             var answer = await router.AskImagesAsync(prompt, images);
-            new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip, anchor, settings.TextBoxOpacity).Show();
+            new AnswerWindow2(answer, settings.StealthMode, settings.SemiStealthSnip, anchor, settings.TextBoxOpacity, settings.WindowLocation).Show();
         }
         finally
         {
@@ -156,6 +156,7 @@ sealed class TrayAppContext : ApplicationContext
 }
 
 enum AppAction { AnswerSelection = 1, StoreSnipImage = 2, SubmitSnipImages = 3, CustomPrompt = 4, ToggleSemiStealth = 5 }
+enum AnswerWindowLocation { Cursor = 0, Center = 1, TopLeft = 2, TopRight = 3, BottomLeft = 4, BottomRight = 5 }
 
 sealed record AppCommand(AppAction Action, int SnipIndex = 0);
 
@@ -188,6 +189,7 @@ sealed class AppSettings
     public bool FullscreenScreenshotMode { get; set; }
     public int TextBoxHeight { get; set; } = 32;
     public double TextBoxOpacity { get; set; } = 1.0;
+    public AnswerWindowLocation WindowLocation { get; set; } = AnswerWindowLocation.Cursor;
     public bool StealthMode { get; set; }
     public bool SemiStealthSnip { get; set; }
 
@@ -679,7 +681,7 @@ static class PromptDialog
 sealed class AnswerWindow2 : Form
 {
     readonly bool closeOnHoverX;
-    public AnswerWindow2(string answer, bool stealth, bool persistentStealth, Rectangle? anchor = null, double opacity = 1.0)
+    public AnswerWindow2(string answer, bool stealth, bool persistentStealth, Rectangle? anchor = null, double opacity = 1.0, AnswerWindowLocation locationMode = AnswerWindowLocation.Cursor)
     {
         StartPosition = stealth ? FormStartPosition.Manual : FormStartPosition.CenterScreen;
         ShowInTaskbar = false;
@@ -700,7 +702,15 @@ sealed class AnswerWindow2 : Form
             Height = Math.Max(32, Math.Min(maxH, textSize.Height + padding * 2));
 
             var area = anchor.HasValue ? Screen.FromRectangle(anchor.Value).WorkingArea : Screen.FromPoint(Cursor.Position).WorkingArea;
-            Location = anchor.HasValue ? ClampNearRect(area, anchor.Value, new Size(Width, Height)) : ClampNearCursor(area, new Size(Width, Height));
+            Location = locationMode switch
+            {
+                AnswerWindowLocation.Center => new Point(area.Left + (area.Width - Width) / 2, area.Top + (area.Height - Height) / 2),
+                AnswerWindowLocation.TopLeft => new Point(area.Left + 14, area.Top + 14),
+                AnswerWindowLocation.TopRight => new Point(area.Right - Width - 14, area.Top + 14),
+                AnswerWindowLocation.BottomLeft => new Point(area.Left + 14, area.Bottom - Height - 14),
+                AnswerWindowLocation.BottomRight => new Point(area.Right - Width - 14, area.Bottom - Height - 14),
+                _ => anchor.HasValue ? ClampNearRect(area, anchor.Value, new Size(Width, Height)) : ClampNearCursor(area, new Size(Width, Height))
+            };
             FormBorderStyle = FormBorderStyle.None;
             BackColor = Color.White;
             ForeColor = Color.Black;
@@ -786,6 +796,7 @@ sealed class SettingsForm2 : Form
         AddCheck(modes, "Fullscreen screenshots", settings.FullscreenScreenshotMode);
         AddText(modes, "Text box height", settings.TextBoxHeight.ToString());
         AddText(modes, "Text box opacity", settings.TextBoxOpacity.ToString("0.0#"));
+        AddEnum(modes, "Window location", settings.WindowLocation);
         root.Controls.Add(modes);
 
         var prompts = Card("Prompts");
@@ -845,6 +856,15 @@ sealed class SettingsForm2 : Form
 
     string NextSnipHotkey() => $"Ctrl+Alt+{Math.Min(snipPromptCount + 2, 9)}";
     string NextSnipStoreHotkey() => $"Ctrl+Alt+Shift+{Math.Min(snipPromptCount + 2, 9)}";
+    void AddEnum<T>(FlowLayoutPanel card, string label, T value) where T : struct, Enum
+    {
+        card.Controls.Add(new Label { Text = label, Width = 460, Height = 18, ForeColor = muted });
+        var combo = new ComboBox { Width = 460, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Color.FromArgb(20, 19, 17), ForeColor = text };
+        foreach (var name in Enum.GetNames<T>()) combo.Items.Add(name);
+        combo.Text = value.ToString();
+        fields[label] = combo;
+        card.Controls.Add(combo);
+    }
     void AddModel(FlowLayoutPanel card)
     {
         card.Controls.Add(new Label { Text = "Model", Width = 460, Height = 18, ForeColor = muted });
@@ -913,6 +933,7 @@ sealed class SettingsForm2 : Form
         settings.FullscreenScreenshotMode = ((CheckBox)fields["Fullscreen screenshots"]).Checked;
         if (int.TryParse(((TextBox)fields["Text box height"]).Text.Trim(), out var textBoxHeight)) settings.TextBoxHeight = textBoxHeight;
         if (double.TryParse(((TextBox)fields["Text box opacity"]).Text.Trim(), out var textBoxOpacity)) settings.TextBoxOpacity = textBoxOpacity;
+        if (Enum.TryParse<AnswerWindowLocation>(((ComboBox)fields["Window location"]).Text, out var loc)) settings.WindowLocation = loc;
         DialogResult = DialogResult.OK;
         Close();
     }
