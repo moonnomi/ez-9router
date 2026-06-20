@@ -27,13 +27,50 @@ const DEFAULTS = {
 
 const SYSTEM_PROMPT = "You are a precise browser assistant. Return a direct, useful answer with clear formatting.";
 
+async function setupDnrRules() {
+  const rules = [
+    {
+      id: 1,
+      priority: 1,
+      action: {
+        type: "modifyHeaders",
+        requestHeaders: [{ header: "Origin", operation: "remove" }]
+      },
+      condition: {
+        urlFilter: "http://127.0.0.1/*",
+        resourceTypes: ["xmlhttprequest", "other"]
+      }
+    },
+    {
+      id: 2,
+      priority: 1,
+      action: {
+        type: "modifyHeaders",
+        requestHeaders: [{ header: "Origin", operation: "remove" }]
+      },
+      condition: {
+        urlFilter: "http://localhost/*",
+        resourceTypes: ["xmlhttprequest", "other"]
+      }
+    }
+  ];
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [1, 2],
+    addRules: rules
+  });
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   const existing = await chrome.storage.local.get(Object.keys(DEFAULTS));
   await chrome.storage.local.set({ ...DEFAULTS, ...compact(existing) });
   await rebuildMenus();
+  await setupDnrRules();
 });
 
-chrome.runtime.onStartup.addListener(rebuildMenus);
+chrome.runtime.onStartup.addListener(async () => {
+  await rebuildMenus();
+  await setupDnrRules();
+});
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.prompts) rebuildMenus();
@@ -341,6 +378,7 @@ async function testModel(model) {
     const raw = await response.text();
     const body = parseJson(raw);
     const result = {
+      debugKey: settings.apiKey,
       model: target,
       ok: response.ok,
       status: response.status,
@@ -354,6 +392,7 @@ async function testModel(model) {
     return result;
   } catch (error) {
     const result = {
+      debugKey: settings.apiKey,
       model: target,
       ok: false,
       status: 0,
