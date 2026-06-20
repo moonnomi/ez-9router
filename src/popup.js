@@ -122,8 +122,8 @@ async function save() {
   const prompts = readPrompts();
 
   await chrome.storage.local.set({
-    endpoint: endpoint.value.trim(),
-    apiKey: apiKey.value.trim(),
+    endpoint: endpoint.value.trim() || "http://127.0.0.1:20128",
+    apiKey: apiKey.value.trim() || "sk_9-router",
     model: model.value.trim(),
     theme: theme.querySelector(".active")?.dataset.theme || "system",
     resumeConversations: resumeConversations.checked,

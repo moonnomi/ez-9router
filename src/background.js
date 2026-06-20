@@ -304,7 +304,8 @@ async function fetchModels() {
   try {
     const settings = await getSettings();
     const response = await fetch(`${trimSlash(settings.endpoint)}/v1/models`, {
-      headers: { Authorization: `Bearer ${settings.apiKey}` }
+      headers: { Authorization: `Bearer ${settings.apiKey}`,
+        "X-Api-Key": settings.apiKey || "" }
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -328,6 +329,7 @@ async function testModel(model) {
       method: "POST",
       headers: {
         Authorization: `Bearer ${settings.apiKey}`,
+        "X-Api-Key": settings.apiKey || "",
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -383,6 +385,7 @@ async function runJob(jobId, settings, prompt, input, tabId, origin) {
       method: "POST",
       headers: {
         Authorization: `Bearer ${settings.apiKey}`,
+        "X-Api-Key": settings.apiKey || "",
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -563,7 +566,7 @@ function getOrigin(url) {
 }
 
 function compact(value) {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== ""));
 }
 
 function trimSlash(value) {
