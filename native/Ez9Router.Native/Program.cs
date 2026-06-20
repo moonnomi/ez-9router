@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Linq;
 using System.Windows.Forms;
+using Markdig;
 
 ApplicationConfiguration.Initialize();
 Application.Run(new TrayAppContext());
@@ -716,7 +717,15 @@ sealed class AnswerWindow2 : Form
             FormBorderStyle = FormBorderStyle.None;
             BackColor = Color.White;
             ForeColor = Color.Black;
-            Controls.Add(new Label { Dock = DockStyle.Fill, Text = answer, BackColor = Color.White, ForeColor = Color.Black, Font = font, Padding = new Padding(padding), AutoEllipsis = true });
+            var html = MarkdownToHtml(answer, true);
+            var webView = new Microsoft.Web.WebView2.WinForms.WebView2
+            {
+                Dock = DockStyle.Fill,
+                DefaultBackgroundColor = Color.White,
+                Margin = new Padding(padding)
+            };
+            Controls.Add(webView);
+            LoadWebView(webView, html);
             if (!persistentStealth)
             {
                 var timer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -734,6 +743,82 @@ sealed class AnswerWindow2 : Form
     {
         if (closeOnHoverX && e.KeyCode == Keys.X && ClientRectangle.Contains(PointToClient(Cursor.Position))) Close();
         base.OnKeyDown(e);
+    }
+
+    async void LoadWebView(Microsoft.Web.WebView2.WinForms.WebView2 webView, string html)
+    {
+        await webView.EnsureCoreWebView2Async();
+        webView.CoreWebView2.NavigateToString(html);
+    }
+
+    static string MarkdownToHtml(string markdown, bool isLight = false)
+    {
+        var pipeline = new Markdig.MarkdownPipelineBuilder().UseAdvancedExtensions().UseMathematics().Build();
+        
+        var body = Markdig.Markdown.ToHtml(markdown, pipeline);
+        
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset=""utf-8"">
+<style>
+  body.dark {{ background-color: #191714; color: #ffffff; }} body.light {{ background-color: #ffffff; color: #000000; }}
+  body {{
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 12px;
+    margin: 0;
+  }}
+  pre {{
+    background-color: #12110f;
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+  }}
+  body.light pre {{ background-color: #f5f5f5; }}
+  code {{
+    font-family: Consolas, monospace;
+    background-color: #12110f;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }}
+  body.light code {{ background-color: #f5f5f5; }}
+  pre code {{
+    padding: 0;
+  }}
+  a {{ color: #4facfe; text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+  h1, h2, h3, h4, h5, h6 {{ margin-top: 24px; margin-bottom: 12px; font-weight: 600; line-height: 1.25; }}
+  h1, h2 {{ border-bottom: 1px solid #333; padding-bottom: 6px; }}
+  body.light h1, body.light h2 {{ border-bottom: 1px solid #ccc; }}
+  table {{ border-collapse: collapse; width: 100%; margin-bottom: 16px; }}
+  th, td {{ padding: 6px 13px; border: 1px solid #444; }}
+  body.light th, body.light td {{ border: 1px solid #ddd; }}
+  tr:nth-child(2n) {{ background-color: #222; }}
+  body.light tr:nth-child(2n) {{ background-color: #f9f9f9; }}
+  blockquote {{ margin: 0; padding: 0 16px; color: #aaa; border-left: 4px solid #555; }}
+  body.light blockquote {{ color: #666; border-left: 4px solid #ccc; }}
+  
+  .math.inline {{ font-size: 1.1em; }}
+  .math.display {{ font-size: 1.2em; display: block; text-align: center; margin: 1em 0; overflow-x: auto; }}
+</style>
+<script>
+  window.MathJax = {{
+    tex: {{ inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] }},
+    svg: {{ fontCache: 'global' }},
+    options: {{ enableMenu: false }}
+  }};
+</script>
+<script type=""text/javascript"" id=""MathJax-script"" async
+  src=""https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"">
+</script>
+</head>
+<body class=""{(isLight ? "light" : "dark")}"">
+{body}
+</body>
+</html>";
     }
 
     static Point ClampNearCursor(Rectangle area, Size size)
