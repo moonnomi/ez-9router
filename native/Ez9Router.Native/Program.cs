@@ -734,10 +734,19 @@ sealed class AnswerWindow2 : Form
             }
             return;
         }
-        Text = "ez-9router";
+                Text = "ez-9router";
         BackColor = Color.FromArgb(18, 17, 15);
         ForeColor = Color.White;
-        Controls.Add(new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Text = answer, BackColor = Color.FromArgb(25, 23, 20), ForeColor = Color.White, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(12) });
+
+        var htmlNormal = MarkdownToHtml(answer, false);
+        var webViewNormal = new Microsoft.Web.WebView2.WinForms.WebView2
+        {
+            Dock = DockStyle.Fill,
+            DefaultBackgroundColor = Color.FromArgb(25, 23, 20),
+            Margin = new Padding(12)
+        };
+        Controls.Add(webViewNormal);
+        LoadWebView(webViewNormal, htmlNormal);
     }
     protected override void OnKeyDown(KeyEventArgs e)
     {
