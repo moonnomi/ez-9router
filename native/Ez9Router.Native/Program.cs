@@ -756,8 +756,18 @@ sealed class AnswerWindow2 : Form
 
     async void LoadWebView(Microsoft.Web.WebView2.WinForms.WebView2 webView, string html)
     {
-        await webView.EnsureCoreWebView2Async();
-        webView.CoreWebView2.NavigateToString(html);
+        try
+        {
+            var userData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ez-9router-native", "WebView2");
+            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, userData);
+            await webView.EnsureCoreWebView2Async(env);
+            webView.CoreWebView2.NavigateToString(html);
+        }
+        catch (Exception ex)
+        {
+            Controls.Remove(webView);
+            Controls.Add(new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Text = "WebView2 Error:\r\n" + ex.Message + "\r\n\r\nOriginal text:\r\n" + html, BackColor = Color.FromArgb(25, 23, 20), ForeColor = Color.White, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(12) });
+        }
     }
 
     static string MarkdownToHtml(string markdown, bool isLight = false)
